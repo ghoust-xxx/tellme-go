@@ -6,16 +6,28 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const confDirName = "tellme"
 const confFileName = "config"
 const cacheDirName = "cache"
 
+type configFileValue struct {
+	comment string
+	key     string
+	value   string
+}
+
+const configFileComment = "TellMe configuration file"
+
+var configFileDefaults []configFileValue
+
 // configInit makes sure config file and cache dir exist and read config values.
 func configInit() {
 	checkConfig()
 	checkCache()
+
 	fmt.Println(confDir)
 	fmt.Println(confFile)
 	fmt.Println(cacheDir)
@@ -59,6 +71,45 @@ func checkConfig() {
 	}
 }
 
+// setDefaultConfigValues define default value for creating a new config file
+func setDefaultConfigValues() {
+	configFileDefaults = []configFileValue{
+		{
+			comment: "interactive mode (yes|no)",
+			key:     "INTERACTIVE",
+			value:   "no",
+		}, {
+			comment: "check existence of pronunciation (yes|no)",
+			key:     "PRONUNCIATION_CHECK",
+			value:   "yes",
+		}, {
+			comment: "download audiofiles in current directory (yes|no)",
+			key:     "DOWNLOAD",
+			value:   "yes",
+		}, {
+			comment: "cache files (yes|no)",
+			key:     "CACHE",
+			value:   "yes",
+		}, {
+			comment: "cache directory. Default is $XDG_CACHE_HOME/tellme",
+			key:     "CACHE_DIR",
+			value:   "$XDG_CACHE_HOME/tellme",
+		}, {
+			comment: "language (en, es, de, etc)",
+			key:     "LANG",
+			value:   "nl",
+		}, {
+			comment: "audiofiles type (mp3|ogg)",
+			key:     "TYPE",
+			value:   "mp3",
+		}, {
+			comment: "verbose mode (yes|no)",
+			key:     "VERBOSE",
+			value:   "no",
+		},
+	}
+}
+
 // createNewConf write a new config file with all default values and comments
 func createNewConf() {
 	fmt.Println("create a new conf file")
@@ -68,6 +119,8 @@ func createNewConf() {
 		log.Fatal(err)
 	}
 
+	setDefaultConfigValues()
+
 	defer func() {
 		err = f.Close()
 		if err != nil {
@@ -75,35 +128,19 @@ func createNewConf() {
 		}
 	}()
 
-	defaultConfig :=
-		`# TellMe configuration file
+	var defaultConfig strings.Builder
 
-# interactive mode (yes|no)
-INTERACTIVE=no
+	defaultConfig.WriteString(fmt.Sprintf("# %s\n\n", configFileComment))
+	for i := 0; i < len(configFileDefaults); i++ {
+		defaultConfig.WriteString(fmt.Sprintf(
+			"# %s\n%s=%s\n\n",
+			configFileDefaults[i].comment,
+			configFileDefaults[i].key,
+			configFileDefaults[i].value,
+		))
+	}
 
-# check existence of pronunciation (yes|no)
-PRONUNCIATION_CHECK=yes
-
-# download audiofiles in current directory (yes|no)
-DOWNLOAD=yes
-
-# cache files (yes|no)
-CACHE=yes
-
-# cache directory. Default is \$HOME/.tellme/cache
-CACHE_DIR=\$HOME/.tellme/cache
-
-# language (en, es, de, etc). Default is 'nl'
-LANG=nl
-
-# audiofiles type (mp3|ogg). mp3 by default
-TYPE=mp3
-
-# verbose mode (yes|no)
-VERBOSE=no
-
-`
-	_, err = f.WriteString(defaultConfig)
+	_, err = f.WriteString(defaultConfig.String())
 	if err != nil {
 		log.Fatal(err)
 	}
