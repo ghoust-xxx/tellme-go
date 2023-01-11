@@ -7,11 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-)
 
-const confDirName = "tellme"
-const confFileName = "config"
-const cacheDirName = "cache"
+	"gopkg.in/ini.v1"
+)
 
 type configFileValue struct {
 	comment string
@@ -19,24 +17,64 @@ type configFileValue struct {
 	value   string
 }
 
+const confDirName = "tellme"
+const confFileName = "config"
+const cacheDirName = "cache"
 const configFileComment = "TellMe configuration file"
 
 var configFileDefaults []configFileValue
+var confDir, confFile, cacheDir string
 
 // configInit makes sure config file and cache dir exist and read config values.
 func configInit() {
 	checkConfig()
+	setConfigValues()
 	checkCache()
+}
 
-	fmt.Println(confDir)
-	fmt.Println(confFile)
-	fmt.Println(cacheDir)
+// setConfigValues set all config value that app will be use.
+// It set them it this priority: default values, values from config file and
+// at last values from command line paramas.
+func setConfigValues() {
+	setDefaultConfigValues()
+	updateFromConfigFile()
+	updateFromCmdLine()
+	fmt.Println(cfg)
+}
+
+// updateFromCmdLine get command line params and update app config values
+// accordingly.
+func updateFromCmdLine() {
+}
+
+// updateFromConfigFile read config file and updates app config values
+// accordingly.
+func updateFromConfigFile() {
+	cFile, err := ini.Load(confFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, key := range cFile.Section("").Keys() {
+		cfg[key.Name()] = key.Value()
+	}
+}
+
+// setDefaultConfigValues set config value in case if some missing both in the
+// config file and in command line params.
+func setDefaultConfigValues() {
+	cfg = make(map[string]string)
+	for _, val := range configFileDefaults {
+		cfg[val.key] = val.value
+	}
 }
 
 // checkConfig checks if $HOME/.tellme/ || $XDG_CONFIG_HOME/tellme/,
 // $HOME/.tellme/config || $XDG_CONFIG_HOME/tellme/config exist.
 // If they are not tries to create them in $XDG paths.
 func checkConfig() {
+	setDefaultConfigFileValues()
+
 	// Check if configuration directory already exists.
 	// Create it if it does not.
 	userHomeDir, err := os.UserHomeDir()
@@ -71,8 +109,13 @@ func checkConfig() {
 	}
 }
 
-// setDefaultConfigValues define default value for creating a new config file
-func setDefaultConfigValues() {
+// setDefaultConfigFileValues define default value for creating a new config file
+func setDefaultConfigFileValues() {
+	userCacheDir, err := os.UserCacheDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	configFileDefaults = []configFileValue{
 		{
 			comment: "interactive mode (yes|no)",
@@ -93,7 +136,7 @@ func setDefaultConfigValues() {
 		}, {
 			comment: "cache directory. Default is $XDG_CACHE_HOME/tellme",
 			key:     "CACHE_DIR",
-			value:   "$XDG_CACHE_HOME/tellme",
+			value:   userCacheDir + "/tellme",
 		}, {
 			comment: "language (en, es, de, etc)",
 			key:     "LANG",
@@ -112,14 +155,10 @@ func setDefaultConfigValues() {
 
 // createNewConf write a new config file with all default values and comments
 func createNewConf() {
-	fmt.Println("create a new conf file")
-
 	f, err := os.OpenFile(confFile, os.O_RDWR|os.O_CREATE, 0750)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	setDefaultConfigValues()
 
 	defer func() {
 		err = f.Close()

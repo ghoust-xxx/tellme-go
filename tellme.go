@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-var confDir, confFile, cacheDir string
+var cfg map[string]string
 
 func main() {
 	fmt.Println("Hello, world!\n")
