@@ -1,14 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
-
-	"gopkg.in/ini.v1"
 )
 
 type configFileValue struct {
@@ -50,13 +50,43 @@ func updateFromCmdLine() {
 // updateFromConfigFile read config file and updates app config values
 // accordingly.
 func updateFromConfigFile() {
-	cFile, err := ini.Load(confFile)
+	cFile, err := os.Open(confFile)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer cFile.Close()
 
-	for _, key := range cFile.Section("").Keys() {
-		cfg[key.Name()] = key.Value()
+	iniLine := regexp.MustCompile(`^\s*(\w+)=([\w\./\\]+)\s*`)
+	var cnt int
+	scanner := bufio.NewScanner(cFile)
+	for scanner.Scan() {
+		cnt++
+		line := []rune(scanner.Text())
+		if len(line) == 0 {
+			continue
+		}
+		if line[0] == '#' {
+			continue
+		}
+
+		matches := iniLine.FindStringSubmatch(string(line))
+		if matches == nil {
+			log.Fatal(
+				fmt.Sprintf("error in config file %v, line %v", confFile, cnt))
+		}
+
+		key := matches[1]
+		value := matches[2]
+		if _, ok := cfg[key]; !ok {
+			log.Fatal(
+				fmt.Sprintf("nonexisting key in config file %v, line %v",
+					confFile, cnt))
+		}
+
+		cfg[key] = value
+	}
+	if err = scanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 }
 
