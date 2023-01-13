@@ -52,16 +52,60 @@ func updateFromCmdLine() {
 	fs.SetOutput(os.Stdout)
 	for _, val := range configDefaults {
 		switch val.ftype {
-			case "yesno":
-				fmt.Println("!!!!")
+		case "yesno":
+			fs.Func(val.fname, val.comment, buildYesNo(val))
+		case "path":
+			fs.Func(val.fname, val.comment, buildPath(val))
+		case "lang":
+			fs.Func(val.fname, val.comment, buildLang(val))
+		case "aformat":
+			fs.Func(val.fname, val.comment, buildAFormat(val))
+		default:
+			panic("Wrong config type (" + val.ftype + "). This should never happen")
 		}
 	}
 	fs.Parse(os.Args[1:])
+}
 
-//	fs.Func("c", "cache files `[yes | no]`", func(s string) error {
-//		out = s
-//		return nil
-//	})
+// buildYesNo parses [yes | no] args type
+func buildYesNo(val configFileValue) func(s string) error {
+	return func(s string) error {
+		if s == "yes" || s == "no" {
+			cfg[val.key] = s
+			return nil
+		}
+		return errors.New("have to be yes or no")
+	}
+}
+
+// buildPath parses path args type
+func buildPath(val configFileValue) func(s string) error {
+	return func(s string) error {
+		cfg[val.key] = s
+		return nil
+	}
+}
+
+// buildLang parses lang args type
+func buildLang(val configFileValue) func(s string) error {
+	return func(s string) error {
+		if len(s) != 2 {
+			return errors.New("have to be 2 letters language code")
+		}
+		cfg[val.key] = s
+		return nil
+	}
+}
+
+// buildAFormat parses audio format args type
+func buildAFormat(val configFileValue) func(s string) error {
+	return func(s string) error {
+		if s == "mp3" || s == "ogg" {
+			cfg[val.key] = s
+			return nil
+		}
+		return errors.New("have to be mp3 or ogg")
+	}
 }
 
 // updateFromConfigFile read config file and updates app config values
@@ -165,49 +209,49 @@ func setDefaultConfigFileValues() {
 
 	configDefaults = []configFileValue{
 		{
-			comment: "interactive mode [yes | no]",
+			comment: "interactive mode `[yes | no]`. Default no",
 			key:     "INTERACTIVE",
 			value:   "no",
 			fname:   "i",
 			ftype:   "yesno",
 		}, {
-			comment: "check existence of pronunciation [yes | no]",
+			comment: "check existence of pronunciation `[yes | no]`. Default yes",
 			key:     "PRONUNCIATION_CHECK",
 			value:   "yes",
 			fname:   "check",
 			ftype:   "yesno",
 		}, {
-			comment: "download audiofiles in current directory [yes | no]",
+			comment: "download audiofiles in current directory `[yes | no]`. Default yes",
 			key:     "DOWNLOAD",
 			value:   "yes",
 			fname:   "d",
 			ftype:   "yesno",
 		}, {
-			comment: "cache files [yes | no]",
+			comment: "cache files `[yes | no]`. Default yes",
 			key:     "CACHE",
 			value:   "yes",
 			fname:   "c",
 			ftype:   "yesno",
 		}, {
-			comment: "cache directory",
+			comment: "cache directory `[any valid path]`. Default " + userCacheDir + "/tellme",
 			key:     "CACHE_DIR",
 			value:   userCacheDir + "/tellme",
 			fname:   "cache-dir",
 			ftype:   "path",
 		}, {
-			comment: "language (en, es, de, etc)",
+			comment: "language `[en | es | de | etc]`. Default nl",
 			key:     "LANG",
 			value:   "nl",
 			fname:   "l",
 			ftype:   "lang",
 		}, {
-			comment: "audiofiles type (mp3|ogg)",
-			key:     "TYPE",
+			comment: "audiofiles type `[mp3 | ogg ]`. Default mp3",
+			key:     "ATYPE",
 			value:   "mp3",
 			fname:   "t",
 			ftype:   "aformat",
 		}, {
-			comment: "verbose mode [yes | no]",
+			comment: "verbose mode [yes | no]. Default no",
 			key:     "VERBOSE",
 			value:   "no",
 			fname:   "verbose",
@@ -218,7 +262,7 @@ func setDefaultConfigFileValues() {
 
 // createNewConf write a new config file with all default values and comments
 func createNewConf() {
-	f, err := os.OpenFile(confFile, os.O_RDWR|os.O_CREATE, 0750)
+	f, err := os.OpenFile(confFile, os.O_RDWR|os.O_CREATE, 0640)
 	if err != nil {
 		log.Fatal(err)
 	}
