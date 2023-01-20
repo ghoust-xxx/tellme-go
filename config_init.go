@@ -154,7 +154,7 @@ func updateFromConfigFile() {
 // setDefaultConfigValues set config value in case if some missing both in the
 // config file and in command line params.
 func setDefaultConfigValues() {
-	cfg = make(map[string]string)
+	cfg = make(Config)
 	for _, val := range configDefaults {
 		cfg[val.key] = val.value
 	}
