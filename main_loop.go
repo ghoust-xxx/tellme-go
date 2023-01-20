@@ -1,17 +1,24 @@
 package main
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"log"
+	"net/http"
+	"os"
+	"regexp"
 	"time"
 )
 
 const forvoURL = "https://forvo.com"
 const audioURL = "https://audio00.forvo.com/audios"
 const getRepeats = 10
+
+type Pron struct {
+	author, sex, country, mp3, ogg, fullAuthor, cacheDir, cacheFile string
+}
 
 // mainLoop is process all input word by word
 func mainLoop(cfg Config, args []string) {
@@ -37,14 +44,66 @@ func getPronList(cfg Config, word string) {
 
 	pageURL := fmt.Sprintf("%s/word/%s/#%s", forvoURL, word, cfg["LANG"])
 	fmt.Println(pageURL)
-	text, _ := getURL(pageURL)
-	fmt.Println(text)
+	//	pageText, err := getURL(pageURL)
+	//	if err != nil {
+	//		log.Printf("Can not get pronunciation page for '%s'!\n", word)
+	//	}
+	//	fmt.Println(text)
+	f, err := os.Open("ttt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	text, _ := io.ReadAll(f)
+	pageText := string(text)
+
+	// extract main block with pronunciations
+	wordsBlockStr := `(?is)<div id="language-container-` + cfg["LANG"] +
+		`.*?<ul.*?>(.*?)</ul>.*?</article>`
+	wordsBlockRe := regexp.MustCompile(wordsBlockStr)
+	wordsBlock := wordsBlockRe.FindString(pageText)
+	if wordsBlock == "" {
+		log.Fatal("can not extract words block")
+	}
+
+	// extract every pronunciation <li> chunks
+	pronStr := `(?is)<li.*?>(.*?)</li>`
+	pronRe := regexp.MustCompile(pronStr)
+	pronBlocks := pronRe.FindAllString(wordsBlock, -1)
+	if pronBlocks == nil {
+		log.Fatal("can not extract separate pronunciations blocks")
+	}
+	for _, chunk := range pronBlocks {
+		fmt.Println("========================================================")
+		fmt.Println(chunk)
+		fmt.Println("========================================================")
+		var item Pron
+
+		chunkStr := `onclick="Play\(\d+,.*?,.*?,'(.*?)'.*?>`
+		chunkRe := regexp.MustCompile(chunkStr)
+		items := chunkRe.FindStringSubmatch(chunk)
+		if items == nil {
+			log.Fatal("can not extract items from pronunciation block")
+		}
+		for i, item := range items {
+			fmt.Printf("%d -> %s\n", i, item)
+		}
+		encodedMp3 := items[1]
+		decodedMp3, err := base64.StdEncoding.DecodeString(encodedMp3)
+		if err != nil {
+			log.Print(err)
+		}
+		item.mp3 = audioURL + "/mp3/" + string(decodedMp3)
+		fmt.Println(item.mp3)
+
+		return
+	}
 }
 
 // getURL gets a web page, handles possible errors and returns the web page
 // content as a string
 func getURL(url string) (string, error) {
-	client := http.Client {
+	client := http.Client{
 		Timeout: 5 * time.Second,
 	}
 	resp, err := client.Get(url)
