@@ -65,6 +65,7 @@ func updateFromCmdLine() {
 		}
 	}
 	fs.Parse(os.Args[1:])
+	os.Args = fs.Args()
 }
 
 // buildYesNo parses [yes | no] args type

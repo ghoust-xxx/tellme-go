@@ -1,14 +1,16 @@
 package main
 
 import (
+	"crypto/md5"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -22,12 +24,12 @@ type Pron struct {
 
 // mainLoop is process all input word by word
 func mainLoop(cfg Config, args []string) {
-	if len(args) > 2 {
+	if len(args) > 1 {
 		log.Fatal("too many words")
 	}
 
-	if len(args) == 2 {
-		processOneWord(cfg, args[1])
+	if len(args) == 1 {
+		processOneWord(cfg, args[0])
 	}
 }
 
@@ -44,18 +46,10 @@ func getPronList(cfg Config, word string) {
 
 	pageURL := fmt.Sprintf("%s/word/%s/#%s", forvoURL, word, cfg["LANG"])
 	fmt.Println(pageURL)
-	//	pageText, err := getURL(pageURL)
-	//	if err != nil {
-	//		log.Printf("Can not get pronunciation page for '%s'!\n", word)
-	//	}
-	//	fmt.Println(text)
-	f, err := os.Open("ttt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-	text, _ := io.ReadAll(f)
-	pageText := string(text)
+		pageText, err := getURL(pageURL)
+		if err != nil {
+			log.Printf("Can not get pronunciation page for '%s'!\n", word)
+		}
 
 	// extract main block with pronunciations
 	wordsBlockStr := `(?is)<div id="language-container-` + cfg["LANG"] +
@@ -74,30 +68,65 @@ func getPronList(cfg Config, word string) {
 		log.Fatal("can not extract separate pronunciations blocks")
 	}
 	for _, chunk := range pronBlocks {
-		fmt.Println("========================================================")
-		fmt.Println(chunk)
-		fmt.Println("========================================================")
-		var item Pron
-
-		chunkStr := `onclick="Play\(\d+,.*?,.*?,'(.*?)'.*?>`
-		chunkRe := regexp.MustCompile(chunkStr)
-		items := chunkRe.FindStringSubmatch(chunk)
-		if items == nil {
-			log.Fatal("can not extract items from pronunciation block")
-		}
-		for i, item := range items {
-			fmt.Printf("%d -> %s\n", i, item)
-		}
-		encodedMp3 := items[1]
-		decodedMp3, err := base64.StdEncoding.DecodeString(encodedMp3)
-		if err != nil {
-			log.Print(err)
-		}
-		item.mp3 = audioURL + "/mp3/" + string(decodedMp3)
-		fmt.Println(item.mp3)
-
-		return
+		extractItem(cfg, word, chunk)
 	}
+}
+
+// extractItem extracts all needed data from one <li> tag
+func extractItem(cfg Config, word, chunk string) {
+	var item Pron
+
+	chunkStr := `(?is)onclick="Play\(\d+,.*?,.*?,'(.*?)'.*?>\s*` +
+		`Pronunciation by\s+(.*?)\s+` +
+		`<span class="from">\((.*?)\ from\ (.*?)\)</span>`
+	chunkRe := regexp.MustCompile(chunkStr)
+	items := chunkRe.FindStringSubmatch(chunk)
+	if items == nil {
+		log.Fatal("can not extract items from pronunciation block")
+	}
+
+	encodedMp3 := items[1]
+	decodedMp3, err := base64.StdEncoding.DecodeString(encodedMp3)
+	if err != nil {
+		log.Print(err)
+	}
+	item.mp3 = audioURL + "/mp3/" + string(decodedMp3)
+	item.ogg = audioURL + "/ogg/" + string(decodedMp3)
+	item.ogg = item.ogg[:len(item.ogg)-3] + "ogg"
+
+	item.author = items[2]
+	authorRe := regexp.MustCompile(`(?si)^<span\ class="ofLink".*?>(.*?)</span>`)
+	cleanedAuthor := authorRe.FindStringSubmatch(item.author)
+	if len(cleanedAuthor) > 0 {
+		item.author = cleanedAuthor[1]
+	}
+
+	item.sex = strings.ToLower(items[3])
+	item.country = items[4]
+
+	item.fullAuthor = fmt.Sprintf("%s (%s from %s)",
+		item.author, item.sex, item.country)
+
+	hash := fmt.Sprintf("%x", md5.Sum([]byte(word)))[0:2]
+	item.cacheDir = filepath.Join(cfg["CACHE_DIR"], cfg["ATYPE"],
+		cfg["LANG"], hash)
+
+	item.cacheFile = filepath.Join(item.cacheDir,
+		word+"_"+item.author+"."+cfg["ATYPE"])
+
+	printPron(item)
+}
+
+func printPron(p Pron) {
+	fmt.Println()
+	fmt.Printf("author -> %s\n", p.author)
+	fmt.Printf("full author -> %s\n", p.fullAuthor)
+	fmt.Printf("sex -> %s\n", p.sex)
+	fmt.Printf("country -> %s\n", p.country)
+	fmt.Printf("mp3 -> %s\n", p.mp3)
+	fmt.Printf("ogg -> %s\n", p.ogg)
+	fmt.Printf("cache dir -> %s\n", p.cacheDir)
+	fmt.Printf("cache file -> %s\n", p.cacheFile)
 }
 
 // getURL gets a web page, handles possible errors and returns the web page
