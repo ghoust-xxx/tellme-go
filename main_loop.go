@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -19,37 +20,56 @@ const audioURL = "https://audio00.forvo.com/audios"
 const getRepeats = 10
 
 type Pron struct {
-	author, sex, country, mp3, ogg, fullAuthor, cacheDir, cacheFile string
+	word, author, sex, country, mp3, ogg, fullAuthor, cacheDir, cacheFile string
 }
+
+var download func(url string) (string, error)
+var words []string
 
 // mainLoop is process all input word by word
 func mainLoop(cfg Config, args []string) {
-	if len(args) > 1 {
-		log.Fatal("too many words")
+	download = getFromFile
+
+	if len(args) > 0 {
+		words = append(words, args...)
 	}
 
-	if len(args) == 1 {
-		processOneWord(cfg, args[0])
+	i := 0
+LOOP:
+	for {
+		if i >= len(words) {
+			return
+		}
+
+		list := getPronList(cfg, words[i])
+
+		if cfg["INTERACTIVE"] == "no" {
+			if len(list) == 0 {
+				i++
+				continue
+			}
+
+			saveWord(list[0])
+			i++
+			goto LOOP
+		}
+
+		i++
 	}
 }
 
-// processOneWord try to get pronunciation for a just one word. Useful if we
-// have batch reading from a file
-func processOneWord(cfg Config, word string) {
-	fmt.Printf("%s: word processing...\n", word)
-	getPronList(cfg, word)
+func saveWord(item Pron) {
+	fmt.Println("Save word: ", item.word)
 }
 
 // getPronList gets a pronunciation list for a specific word
-func getPronList(cfg Config, word string) {
-	fmt.Printf("%s: get pronunciation list...\n", word)
-
+func getPronList(cfg Config, word string) (result []Pron) {
 	pageURL := fmt.Sprintf("%s/word/%s/#%s", forvoURL, word, cfg["LANG"])
-	fmt.Println(pageURL)
-		pageText, err := getURL(pageURL)
-		if err != nil {
-			log.Printf("Can not get pronunciation page for '%s'!\n", word)
-		}
+	pageText, err := download(pageURL)
+	if err != nil {
+		log.Printf("can not get pronunciation page for '%s'!\n", word)
+		return
+	}
 
 	// extract main block with pronunciations
 	wordsBlockStr := `(?is)<div id="language-container-` + cfg["LANG"] +
@@ -68,17 +88,20 @@ func getPronList(cfg Config, word string) {
 		log.Fatal("can not extract separate pronunciations blocks")
 	}
 	for _, chunk := range pronBlocks {
-		extractItem(cfg, word, chunk)
+		result = append(result, extractItem(cfg, word, chunk))
 	}
+
+	return
 }
 
 // extractItem extracts all needed data from one <li> tag
-func extractItem(cfg Config, word, chunk string) {
+func extractItem(cfg Config, word, chunk string) Pron {
 	var item Pron
+	item.word = word
 
 	chunkStr := `(?is)onclick="Play\(\d+,.*?,.*?,'(.*?)'.*?>\s*` +
 		`Pronunciation by\s+(.*?)\s+` +
-		`<span class="from">\((.*?)\ from\ (.*?)\)</span>`
+		`</span>\s*<span class="from">\((.*?)\ from\ (.*?)\)</span>`
 	chunkRe := regexp.MustCompile(chunkStr)
 	items := chunkRe.FindStringSubmatch(chunk)
 	if items == nil {
@@ -114,7 +137,8 @@ func extractItem(cfg Config, word, chunk string) {
 	item.cacheFile = filepath.Join(item.cacheDir,
 		word+"_"+item.author+"."+cfg["ATYPE"])
 
-	printPron(item)
+	//printPron(item)
+	return item
 }
 
 func printPron(p Pron) {
@@ -152,4 +176,20 @@ func getURL(url string) (string, error) {
 		log.Fatal(err)
 	}
 	return string(bytes), nil
+}
+
+// getFromFile can be used in tests and gets web pages from file system
+func getFromFile(url string) (string, error) {
+	last := strings.LastIndex(url, "/")
+	first := strings.LastIndex(url[:last], "/") + 1
+	f, err := os.Open(filepath.Join(
+		"test_files", "forvo_"+cfg["LANG"]+"_"+url[first:last]+".html"))
+	if err != nil {
+		log.Print(err)
+	}
+	defer f.Close()
+	text, _ := io.ReadAll(f)
+	pageText := string(text)
+
+	return pageText, err
 }

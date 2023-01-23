@@ -42,7 +42,6 @@ func setConfigValues() {
 	setDefaultConfigValues()
 	updateFromConfigFile()
 	updateFromCmdLine()
-	fmt.Println(cfg)
 }
 
 // updateFromCmdLine get command line params and update app config values
