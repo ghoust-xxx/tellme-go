@@ -24,7 +24,8 @@ const downloadRepeats = 10
 const downloadTimeout = 5 * time.Second
 
 type Pron struct {
-	word, author, sex, country, mp3, ogg, fullAuthor, cacheDir, cacheFile string
+	word, author, sex, country, mp3, ogg, aFile, aURL, fullAuthor, cacheDir,
+	cacheFile string
 }
 
 var getHTML func(url string) (string, error)
@@ -66,11 +67,13 @@ LOOP:
 
 func saveWord(item Pron) {
 	fmt.Println("Save word: ", item.word)
-	switch cfg["ATYPE"] {
-	case "mp3":
-		getAudio(item.mp3, item.word+".mp3")
-	case "ogg":
-		getAudio(item.ogg, item.word+".ogg")
+	fmt.Println(cfg)
+
+	if cfg["CACHE"] == "yes" {
+		_, err := os.Stat(item.cacheFile)
+		if errors.Is(err, os.ErrNotExist) {
+			getAudio(item.aURL, item.cacheFile)
+		}
 	}
 }
 
@@ -129,6 +132,13 @@ func extractItem(cfg Config, word, chunk string) Pron {
 	item.ogg = audioURL + "/ogg/" + string(decodedMp3)
 	item.ogg = item.ogg[:len(item.ogg)-3] + "ogg"
 
+	switch cfg["ATYPE"] {
+	case "mp3":
+		item.aURL = item.mp3
+	case "ogg":
+		item.aURL = item.ogg
+	}
+
 	item.author = items[2]
 	authorRe := regexp.MustCompile(`(?si)^<span\ class="ofLink".*?>(.*?)</span>`)
 	cleanedAuthor := authorRe.FindStringSubmatch(item.author)
@@ -148,6 +158,8 @@ func extractItem(cfg Config, word, chunk string) Pron {
 
 	item.cacheFile = filepath.Join(item.cacheDir,
 		word+"_"+item.author+"."+cfg["ATYPE"])
+
+	item.aFile = word+"."+cfg["ATYPE"]
 
 	//printPron(item)
 	return item
@@ -210,6 +222,12 @@ func getTestURL(url string) (string, error) {
 // first checks cache directory. If file is missing function downloads it
 // to the cache directory and then copy it to the current location.
 func downloadFile(url, dst string) error {
+	dir := filepath.Dir(dst)
+	err := os.MkdirAll(dir, 0750)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	f, err := os.Create(dst)
 	if err != nil {
 		log.Fatal(err)
@@ -241,13 +259,22 @@ func downloadFile(url, dst string) error {
 
 // downloadTestFile can be used in tests and download audio file from file system
 func downloadTestFile(url, dst string) error {
+	dir := filepath.Dir(dst)
+	err := os.MkdirAll(dir, 0750)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	out, err := os.Create(dst)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer out.Close()
 
-	in, err := os.Open(filepath.Join(testFiles, "forvo_"+cfg["LANG"]+"_"+dst))
+	first := strings.LastIndex(dst, "/")
+	last := first + strings.LastIndex(dst[first:], "_")
+	in, err := os.Open(filepath.Join(testFiles,
+		"forvo_"+cfg["LANG"]+"_"+dst[first+1:last]+"."+cfg["ATYPE"]))
 	if err != nil {
 		log.Print(err)
 	}
