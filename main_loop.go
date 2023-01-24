@@ -17,18 +17,24 @@ import (
 
 const forvoURL = "https://forvo.com"
 const audioURL = "https://audio00.forvo.com/audios"
+const testFiles = "local_files"
 const getRepeats = 10
+const getTimeout = 5 * time.Second
+const downloadRepeats = 10
+const downloadTimeout = 5 * time.Second
 
 type Pron struct {
 	word, author, sex, country, mp3, ogg, fullAuthor, cacheDir, cacheFile string
 }
 
-var download func(url string) (string, error)
+var getHTML func(url string) (string, error)
+var getAudio func(url, dst string) error
 var words []string
 
 // mainLoop is process all input word by word
 func mainLoop(cfg Config, args []string) {
-	download = getFromFile
+	getHTML = getTestURL
+	getAudio = downloadTestFile
 
 	if len(args) > 0 {
 		words = append(words, args...)
@@ -60,12 +66,18 @@ LOOP:
 
 func saveWord(item Pron) {
 	fmt.Println("Save word: ", item.word)
+	switch cfg["ATYPE"] {
+	case "mp3":
+		getAudio(item.mp3, item.word+".mp3")
+	case "ogg":
+		getAudio(item.ogg, item.word+".ogg")
+	}
 }
 
 // getPronList gets a pronunciation list for a specific word
 func getPronList(cfg Config, word string) (result []Pron) {
 	pageURL := fmt.Sprintf("%s/word/%s/#%s", forvoURL, word, cfg["LANG"])
-	pageText, err := download(pageURL)
+	pageText, err := getHTML(pageURL)
 	if err != nil {
 		log.Printf("can not get pronunciation page for '%s'!\n", word)
 		return
@@ -157,7 +169,7 @@ func printPron(p Pron) {
 // content as a string
 func getURL(url string) (string, error) {
 	client := http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: getTimeout,
 	}
 	resp, err := client.Get(url)
 	repeat := getRepeats
@@ -178,12 +190,12 @@ func getURL(url string) (string, error) {
 	return string(bytes), nil
 }
 
-// getFromFile can be used in tests and gets web pages from file system
-func getFromFile(url string) (string, error) {
+// getTestURL can be used in tests and gets web pages from file system
+func getTestURL(url string) (string, error) {
 	last := strings.LastIndex(url, "/")
 	first := strings.LastIndex(url[:last], "/") + 1
 	f, err := os.Open(filepath.Join(
-		"test_files", "forvo_"+cfg["LANG"]+"_"+url[first:last]+".html"))
+		testFiles, "forvo_"+cfg["LANG"]+"_"+url[first:last]+".html"))
 	if err != nil {
 		log.Print(err)
 	}
@@ -192,4 +204,59 @@ func getFromFile(url string) (string, error) {
 	pageText := string(text)
 
 	return pageText, err
+}
+
+// downloadFile gets and saves audiofile from web. In case of enabled cache it
+// first checks cache directory. If file is missing function downloads it
+// to the cache directory and then copy it to the current location.
+func downloadFile(url, dst string) error {
+	f, err := os.Create(dst)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	client := http.Client{
+		Timeout: getTimeout,
+	}
+	resp, err := client.Get(url)
+	repeat := getRepeats
+	for err != nil && repeat > 0 {
+		resp, err = http.Get(url)
+		repeat--
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return errors.New(fmt.Sprintf("can not download %s: %v", url, err))
+	}
+
+	_, err = io.Copy(f, resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return nil
+}
+
+// downloadTestFile can be used in tests and download audio file from file system
+func downloadTestFile(url, dst string) error {
+	out, err := os.Create(dst)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer out.Close()
+
+	in, err := os.Open(filepath.Join(testFiles, "forvo_"+cfg["LANG"]+"_"+dst))
+	if err != nil {
+		log.Print(err)
+	}
+	defer in.Close()
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return nil
 }
