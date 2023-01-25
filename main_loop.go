@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -31,11 +32,18 @@ type Pron struct {
 var getHTML func(url string) (string, error)
 var getAudio func(url, dst string) error
 var words []string
+var tmpDir string
 
 // mainLoop is process all input word by word
 func mainLoop(cfg Config, args []string) {
 	getHTML = getTestURL
 	getAudio = downloadTestFile
+
+	tmpDir, err := ioutil.TempDir("", "tellme")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
 
 	if len(args) > 0 {
 		words = append(words, args...)
@@ -65,16 +73,46 @@ LOOP:
 	}
 }
 
-func saveWord(item Pron) {
-	fmt.Println("Save word: ", item.word)
+func saveWord(item Pron) string {
 	fmt.Println(cfg)
+	fmt.Println("Save word: ", item.word)
 
 	if cfg["CACHE"] == "yes" {
 		_, err := os.Stat(item.cacheFile)
 		if errors.Is(err, os.ErrNotExist) {
-			getAudio(item.aURL, item.cacheFile)
+			err = getAudio(item.aURL, item.cacheFile)
+			if err != nil {
+				return ""
+			}
+		}
+
+		if cfg["DOWNLOAD"] == "yes" {
+			copyFile(item.cacheFile, item.aFile)
+			return item.aFile
+		}
+		return item.cacheFile
+	}
+
+	// we do not use cache
+	if cfg["DOWNLOAD"] == "yes" {
+		err := getAudio(item.aURL, item.aFile)
+		if err != nil {
+			return ""
 		}
 	}
+
+    // We have no cache and do not save file in local directory.
+    // So we use temporary file if we are in interactive mode.
+    // Otherwise we just do not need download anything
+	if cfg["INTERACTIVE"] == "yes" {
+		err := getAudio(item.aURL,
+			filepath.Join(tmpDir + filepath.Base(item.cacheFile)))
+		if err != nil {
+			return ""
+		}
+	}
+
+	return ""
 }
 
 // getPronList gets a pronunciation list for a specific word
@@ -265,25 +303,32 @@ func downloadTestFile(url, dst string) error {
 		log.Fatal(err)
 	}
 
+	first := strings.LastIndex(dst, "/")
+	last := first + strings.Index(dst[first:], "_")
+	src := filepath.Join(testFiles,
+		"forvo_"+cfg["LANG"]+"_"+dst[first+1:last]+"."+cfg["ATYPE"])
+
+	copyFile(src, dst)
+
+	return nil
+}
+
+// copyFile just a helper function to copy file in a more comfortable way
+func copyFile(src, dst string) {
+	in, err := os.Open(src)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer in.Close()
+
 	out, err := os.Create(dst)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer out.Close()
 
-	first := strings.LastIndex(dst, "/")
-	last := first + strings.LastIndex(dst[first:], "_")
-	in, err := os.Open(filepath.Join(testFiles,
-		"forvo_"+cfg["LANG"]+"_"+dst[first+1:last]+"."+cfg["ATYPE"]))
-	if err != nil {
-		log.Print(err)
-	}
-	defer in.Close()
-
 	_, err = io.Copy(out, in)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	return nil
 }
