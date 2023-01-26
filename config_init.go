@@ -42,6 +42,14 @@ func setConfigValues() {
 	setDefaultConfigValues()
 	updateFromConfigFile()
 	updateFromCmdLine()
+	optionsValidation()
+}
+
+// optionsValidation check if current flag combination is allowed
+func optionsValidation() {
+	if len(os.Args) > 0 && cfg["FILE"] != "" {
+		log.Fatal("you can use only --file options or words in command line, not both")
+	}
 }
 
 // updateFromCmdLine get command line params and update app config values
@@ -63,7 +71,9 @@ func updateFromCmdLine() {
 			panic("Wrong config type (" + val.ftype + "). This should never happen")
 		}
 	}
+	pFile := fs.String("f", "", "read input from `filename`")
 	fs.Parse(os.Args[1:])
+	cfg["FILE"] = *pFile
 	os.Args = fs.Args()
 }
 

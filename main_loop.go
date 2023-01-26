@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/md5"
 	"encoding/base64"
 	"errors"
@@ -45,31 +46,58 @@ func mainLoop(cfg Config, args []string) {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	i := 0
+	var next func() (string, error)
 	if len(args) > 0 {
 		words = append(words, args...)
+		next = func() (string, error) {
+			if i >= len(words) {
+				return "", errors.New("out of range")
+			}
+			i++
+			return words[i-1], nil
+		}
 	}
 
-	i := 0
+	var f *os.File
+	if cfg["FILE"] != "" {
+		f, err = os.Open(cfg["FILE"])
+	} else {
+		f = os.Stdin
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	next = func() (string, error) {
+		if !scanner.Scan() {
+			if err = scanner.Err(); err != nil {
+				log.Fatal(err)
+			}
+			return "", errors.New("out of range")
+		}
+		return scanner.Text(), nil
+	}
+
 LOOP:
 	for {
-		if i >= len(words) {
-			return
+		word, err := next()
+		if err != nil {
+			break
 		}
 
-		list := getPronList(cfg, words[i])
+		list := getPronList(cfg, word)
 
 		if cfg["INTERACTIVE"] == "no" {
 			if len(list) == 0 {
-				i++
 				continue
 			}
 
 			saveWord(list[0])
-			i++
 			goto LOOP
 		}
-
-		i++
 	}
 }
 
@@ -105,11 +133,12 @@ func saveWord(item Pron) string {
     // So we use temporary file if we are in interactive mode.
     // Otherwise we just do not need download anything
 	if cfg["INTERACTIVE"] == "yes" {
-		err := getAudio(item.aURL,
-			filepath.Join(tmpDir + filepath.Base(item.cacheFile)))
+		file := filepath.Join(tmpDir + filepath.Base(item.cacheFile))
+		err := getAudio(item.aURL, file)
 		if err != nil {
 			return ""
 		}
+		return file
 	}
 
 	return ""
