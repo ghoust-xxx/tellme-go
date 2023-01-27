@@ -11,10 +11,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 const forvoURL = "https://forvo.com"
@@ -32,6 +37,7 @@ type Pron struct {
 
 var getHTML func(url string) (string, error)
 var getAudio func(url, dst string) error
+var clearScreen func()
 var words []string
 var tmpDir string
 
@@ -39,6 +45,7 @@ var tmpDir string
 func mainLoop(cfg Config, args []string) {
 	getHTML = getTestURL
 	getAudio = downloadTestFile
+	clearScreen = clearScreenInit()
 
 	tmpDir, err := ioutil.TempDir("", "tellme")
 	if err != nil {
@@ -46,41 +53,43 @@ func mainLoop(cfg Config, args []string) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	i := 0
+	var i int
 	var next func() (string, error)
 	if len(args) > 0 {
 		words = append(words, args...)
 		next = func() (string, error) {
+			i++
 			if i >= len(words) {
 				return "", errors.New("out of range")
 			}
-			i++
-			return words[i-1], nil
+			return words[i], nil
 		}
-	}
-
-	var f *os.File
-	if cfg["FILE"] != "" {
-		f, err = os.Open(cfg["FILE"])
 	} else {
-		f = os.Stdin
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	next = func() (string, error) {
-		if !scanner.Scan() {
-			if err = scanner.Err(); err != nil {
-				log.Fatal(err)
-			}
-			return "", errors.New("out of range")
+		var f *os.File
+		if cfg["FILE"] != "" {
+			f, err = os.Open(cfg["FILE"])
+		} else {
+			f = os.Stdin
 		}
-		return scanner.Text(), nil
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+
+		scanner := bufio.NewScanner(f)
+		next = func() (string, error) {
+			i++
+			if !scanner.Scan() {
+				if err = scanner.Err(); err != nil {
+					log.Fatal(err)
+				}
+				return "", errors.New("out of range")
+			}
+			return scanner.Text(), nil
+		}
 	}
 
+	i = -1
 LOOP:
 	for {
 		word, err := next()
@@ -97,12 +106,108 @@ LOOP:
 
 			saveWord(list[0])
 			goto LOOP
+		} else {
+			printMenu(i, word, list)
 		}
 	}
 }
 
+// printMenu prints user menu and returs his response (command or a number)
+func printMenu(curItem int, word string, list []Pron) string {
+UPDATE_PRINT:
+	clearScreen()
+	fmt.Println(word)
+	fmt.Println(strings.Repeat("=", len(word)), "\n")
+	digitsNum := len(strconv.Itoa(len(list)))
+	for i, item := range list {
+		star := " "
+		if i == curItem {
+			star = "*"
+		}
+		fmt.Printf("%s %0"+strconv.Itoa(digitsNum)+"d\tBy %s\n",
+			star, i, item.fullAuthor)
+	}
+	fmt.Print("\n\n")
+	fmt.Printf("[0-%d]:choose pronunciation    [n]:next word    "+
+		"[p]:previous word    [q]:quit\n", len(list)-1)
+
+	allowedChars := "1234567890npq\n"
+	var choosenItem string
+	for {
+		char := getChar()
+		if strings.Index(allowedChars, char) == -1 {
+			continue
+		}
+		_, err := strconv.Atoi(char)
+		if err == nil {
+			choosenItem += char
+			fmt.Print(char)
+			num, _ := strconv.Atoi(choosenItem)
+			if num > len(list)-1 {
+				fmt.Println("\nNumber you entered is too big. Press any key...")
+				getChar()
+				goto UPDATE_PRINT
+			}
+			if len(choosenItem) == digitsNum {
+				return choosenItem
+			}
+			continue
+		}
+		return char
+	}
+}
+
+// clearScreenInit prepare platform independent function for terminal clearing
+func clearScreenInit() func() {
+	switch runtime.GOOS {
+	case "linux":
+		return func() {
+			cmd := exec.Command("clear")
+			cmd.Stdout = os.Stdout
+			cmd.Run()
+		}
+	case "darwin":
+		return func() {
+			cmd := exec.Command("clear")
+			cmd.Stdout = os.Stdout
+			cmd.Run()
+		}
+	case "windows":
+		return func() {
+			cmd := exec.Command("cmd", "/c", "cls")
+			cmd.Stdout = os.Stdout
+			cmd.Run()
+		}
+	default:
+		return func() {}
+	}
+}
+
+// getChar reads from STDIN one character
+func getChar() string {
+	state, err := term.MakeRaw(0)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		err := term.Restore(0, state)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	in := bufio.NewReader(os.Stdin)
+	char, _, err := in.ReadRune()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(char)
+}
+
+// saveWord saves mp3/ogg file in cache and in current directory. If cache
+// enabled and file already in it returns the word from the cache
 func saveWord(item Pron) string {
-	fmt.Println(cfg)
 	fmt.Println("Save word: ", item.word)
 
 	if cfg["CACHE"] == "yes" {
@@ -129,9 +234,9 @@ func saveWord(item Pron) string {
 		}
 	}
 
-    // We have no cache and do not save file in local directory.
-    // So we use temporary file if we are in interactive mode.
-    // Otherwise we just do not need download anything
+	// We have no cache and do not save file in local directory.
+	// So we use temporary file if we are in interactive mode.
+	// Otherwise we just do not need download anything
 	if cfg["INTERACTIVE"] == "yes" {
 		file := filepath.Join(tmpDir + filepath.Base(item.cacheFile))
 		err := getAudio(item.aURL, file)
@@ -226,7 +331,7 @@ func extractItem(cfg Config, word, chunk string) Pron {
 	item.cacheFile = filepath.Join(item.cacheDir,
 		word+"_"+item.author+"."+cfg["ATYPE"])
 
-	item.aFile = word+"."+cfg["ATYPE"]
+	item.aFile = word + "." + cfg["ATYPE"]
 
 	//printPron(item)
 	return item
