@@ -37,15 +37,19 @@ type Pron struct {
 
 var getHTML func(url string) (string, error)
 var getAudio func(url, dst string) error
+var getWord func(i int) (string, error)
 var clearScreen func()
 var words []string
+var scanner *bufio.Scanner
 var tmpDir string
+var inputFile *os.File
 
 // mainLoop is process all input word by word
 func mainLoop(cfg Config, args []string) {
 	getHTML = getTestURL
 	getAudio = downloadTestFile
 	clearScreen = clearScreenInit()
+	wordListInit(cfg, args)
 
 	tmpDir, err := ioutil.TempDir("", "tellme")
 	if err != nil {
@@ -53,67 +57,120 @@ func mainLoop(cfg Config, args []string) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	var i int
-	var next func() (string, error)
-	if len(args) > 0 {
-		words = append(words, args...)
-		next = func() (string, error) {
-			i++
-			if i >= len(words) {
-				return "", errors.New("out of range")
-			}
-			return words[i], nil
-		}
-	} else {
-		var f *os.File
-		if cfg["FILE"] != "" {
-			f, err = os.Open(cfg["FILE"])
-		} else {
-			f = os.Stdin
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer f.Close()
-
-		scanner := bufio.NewScanner(f)
-		next = func() (string, error) {
-			i++
-			if !scanner.Scan() {
-				if err = scanner.Err(); err != nil {
-					log.Fatal(err)
-				}
-				return "", errors.New("out of range")
-			}
-			return scanner.Text(), nil
-		}
-	}
-
-	i = -1
-LOOP:
+	i := 0
+	var errMessage string
+	word, err := getWord(i)
 	for {
-		word, err := next()
-		if err != nil {
-			break
-		}
-
 		list := getPronList(cfg, word)
 
 		if cfg["INTERACTIVE"] == "no" {
 			if len(list) == 0 {
 				continue
 			}
-
 			saveWord(list[0])
-			goto LOOP
+			continue
 		} else {
-			printMenu(i, word, list)
+			aPath := saveWord(list[i])
+			sayWord(aPath)
+			key := printMenu(0, word, list, errMessage)
+			errMessage = ""
+			switch key {
+			case "q":
+				return
+			case "p":
+				i--
+				word, err = getWord(i)
+				if err != nil {
+					errMessage = err.Error()
+					i++
+				}
+			case "n":
+				i++
+				word, err = getWord(i)
+				if err != nil {
+					errMessage = err.Error()
+					i--
+				}
+			case "\n":
+				sayWord(aPath)
+			}
 		}
+	}
+
+	inputFile.Close()
+}
+
+// wordListInit populate word list in case of cmd-line arguments or open
+// input file/STDIO for reading otherwise
+func wordListInit(cfg Config, args []string) {
+	if len(args) > 0 {
+		words = append(words, args...)
+		getWord = getWordArgs
+	} else {
+		var err error
+		if cfg["FILE"] != "" {
+			inputFile, err = os.Open(cfg["FILE"])
+		} else {
+			inputFile = os.Stdin
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		scanner = bufio.NewScanner(inputFile)
+		getWord = getWordFile
+	}
+}
+
+// getWordArgs return i-th word if we used cmd-line arguments
+func getWordArgs(i int) (string, error) {
+	if i >= 0 && i < len(words) {
+		return words[i], nil
+	}
+
+	if i < 0 {
+		return words[0], errors.New("The beginning of the list")
+	}
+
+	if i >= len(words) {
+		return words[len(words)-1], errors.New("The end of the list")
+	}
+	return "", nil
+}
+
+// getWordFile return i-th word if we used file or STDIO as words source
+func getWordFile(i int) (string, error) {
+	if i >= 0 && i < len(words) {
+		return words[i], nil
+	}
+
+	if i < 0 {
+		return words[0], errors.New("The beginning of the list")
+	}
+
+	if i >= len(words) {
+		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				log.Fatal(err)
+			}
+			return words[len(words)-1], errors.New("The end of the list")
+		}
+		words = append(words, scanner.Text())
+		return words[len(words)-1], nil
+	}
+	return "", nil
+}
+
+// sayWord tries to play audiofile with pronunciation using mpg123 cmd-line app
+func sayWord(path string) {
+	mpg123 := exec.Command("mpg123", "-q", path)
+	if err := mpg123.Run(); err != nil {
+		log.Fatal(err)
 	}
 }
 
 // printMenu prints user menu and returs his response (command or a number)
-func printMenu(curItem int, word string, list []Pron) string {
+func printMenu(curItem int, word string, list []Pron, errMessage string) string {
 UPDATE_PRINT:
 	clearScreen()
 	fmt.Println(word)
@@ -130,6 +187,9 @@ UPDATE_PRINT:
 	fmt.Print("\n\n")
 	fmt.Printf("[0-%d]:choose pronunciation    [n]:next word    "+
 		"[p]:previous word    [q]:quit\n", len(list)-1)
+	if errMessage != "" {
+		fmt.Printf("\n%s\n", errMessage)
+	}
 
 	allowedChars := "1234567890npq\n"
 	var choosenItem string
