@@ -6,20 +6,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/term"
 )
 
 const forvoURL = "https://forvo.com"
@@ -58,10 +52,16 @@ func mainLoop(cfg Config, args []string) {
 	defer os.RemoveAll(tmpDir)
 
 	i := 0
+	curItem := 0
 	var errMessage string
+	newWord := true
+	var list []Pron
 	word, err := getWord(i)
 	for {
-		list := getPronList(cfg, word)
+		if newWord {
+			list = getPronList(cfg, word)
+			newWord = false
+		}
 
 		if cfg["INTERACTIVE"] == "no" {
 			if len(list) == 0 {
@@ -70,29 +70,42 @@ func mainLoop(cfg Config, args []string) {
 			saveWord(list[0])
 			continue
 		} else {
-			aPath := saveWord(list[i])
-			sayWord(aPath)
-			key := printMenu(0, word, list, errMessage)
+			key := printMenu(curItem, word, list, errMessage)
 			errMessage = ""
 			switch key {
 			case "q":
 				return
 			case "p":
 				i--
+				curItem = 0
+				newWord = true
 				word, err = getWord(i)
 				if err != nil {
 					errMessage = err.Error()
 					i++
 				}
-			case "n":
+			case "n", "\n":
 				i++
+				curItem = 0
+				newWord = true
 				word, err = getWord(i)
 				if err != nil {
 					errMessage = err.Error()
 					i--
 				}
-			case "\n":
-				sayWord(aPath)
+			case "r":
+			case "j":
+				curItem++
+				if curItem >= len(list) {
+					curItem = 0
+				}
+			case "k":
+				curItem--
+				if curItem < 0 {
+					curItem = len(list) - 1
+				}
+			default:
+				curItem, _ = strconv.Atoi(key)
 			}
 		}
 	}
@@ -161,14 +174,6 @@ func getWordFile(i int) (string, error) {
 	return "", nil
 }
 
-// sayWord tries to play audiofile with pronunciation using mpg123 cmd-line app
-func sayWord(path string) {
-	mpg123 := exec.Command("mpg123", "-q", path)
-	if err := mpg123.Run(); err != nil {
-		log.Fatal(err)
-	}
-}
-
 // printMenu prints user menu and returs his response (command or a number)
 func printMenu(curItem int, word string, list []Pron, errMessage string) string {
 UPDATE_PRINT:
@@ -185,13 +190,17 @@ UPDATE_PRINT:
 			star, i, item.fullAuthor)
 	}
 	fmt.Print("\n\n")
-	fmt.Printf("[0-%d]:choose pronunciation    [n]:next word    "+
-		"[p]:previous word    [q]:quit\n", len(list)-1)
+	fmt.Printf("[0-%d]:choose pronunciation    [n|<Enter>]:next word    [p]:previous word\n"+
+		"[j]:next pronunciation    [k]:previous pronunciation    [r]:repeat again    [q]:quit\n",
+		len(list)-1)
 	if errMessage != "" {
 		fmt.Printf("\n%s\n", errMessage)
 	}
 
-	allowedChars := "1234567890npq\n"
+	aPath := saveWord(list[curItem])
+	sayWord(aPath)
+
+	allowedChars := "\n1234567890npjkrq"
 	var choosenItem string
 	for {
 		char := getChar()
@@ -215,54 +224,6 @@ UPDATE_PRINT:
 		}
 		return char
 	}
-}
-
-// clearScreenInit prepare platform independent function for terminal clearing
-func clearScreenInit() func() {
-	switch runtime.GOOS {
-	case "linux":
-		return func() {
-			cmd := exec.Command("clear")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		}
-	case "darwin":
-		return func() {
-			cmd := exec.Command("clear")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		}
-	case "windows":
-		return func() {
-			cmd := exec.Command("cmd", "/c", "cls")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		}
-	default:
-		return func() {}
-	}
-}
-
-// getChar reads from STDIN one character
-func getChar() string {
-	state, err := term.MakeRaw(0)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		err := term.Restore(0, state)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	in := bufio.NewReader(os.Stdin)
-	char, _, err := in.ReadRune()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return string(char)
 }
 
 // saveWord saves mp3/ogg file in cache and in current directory. If cache
@@ -395,134 +356,4 @@ func extractItem(cfg Config, word, chunk string) Pron {
 
 	//printPron(item)
 	return item
-}
-
-func printPron(p Pron) {
-	fmt.Println()
-	fmt.Printf("author -> %s\n", p.author)
-	fmt.Printf("full author -> %s\n", p.fullAuthor)
-	fmt.Printf("sex -> %s\n", p.sex)
-	fmt.Printf("country -> %s\n", p.country)
-	fmt.Printf("mp3 -> %s\n", p.mp3)
-	fmt.Printf("ogg -> %s\n", p.ogg)
-	fmt.Printf("cache dir -> %s\n", p.cacheDir)
-	fmt.Printf("cache file -> %s\n", p.cacheFile)
-}
-
-// getURL gets a web page, handles possible errors and returns the web page
-// content as a string
-func getURL(url string) (string, error) {
-	client := http.Client{
-		Timeout: getTimeout,
-	}
-	resp, err := client.Get(url)
-	repeat := getRepeats
-	for err != nil && repeat > 0 {
-		resp, err = http.Get(url)
-		repeat--
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", errors.New(fmt.Sprintf("can not get %s: %v", url, err))
-	}
-
-	bytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return string(bytes), nil
-}
-
-// getTestURL can be used in tests and gets web pages from file system
-func getTestURL(url string) (string, error) {
-	last := strings.LastIndex(url, "/")
-	first := strings.LastIndex(url[:last], "/") + 1
-	f, err := os.Open(filepath.Join(
-		testFiles, "forvo_"+cfg["LANG"]+"_"+url[first:last]+".html"))
-	if err != nil {
-		log.Print(err)
-	}
-	defer f.Close()
-	text, _ := io.ReadAll(f)
-	pageText := string(text)
-
-	return pageText, err
-}
-
-// downloadFile gets and saves audiofile from web. In case of enabled cache it
-// first checks cache directory. If file is missing function downloads it
-// to the cache directory and then copy it to the current location.
-func downloadFile(url, dst string) error {
-	dir := filepath.Dir(dst)
-	err := os.MkdirAll(dir, 0750)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	f, err := os.Create(dst)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-
-	client := http.Client{
-		Timeout: getTimeout,
-	}
-	resp, err := client.Get(url)
-	repeat := getRepeats
-	for err != nil && repeat > 0 {
-		resp, err = http.Get(url)
-		repeat--
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return errors.New(fmt.Sprintf("can not download %s: %v", url, err))
-	}
-
-	_, err = io.Copy(f, resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return nil
-}
-
-// downloadTestFile can be used in tests and download audio file from file system
-func downloadTestFile(url, dst string) error {
-	dir := filepath.Dir(dst)
-	err := os.MkdirAll(dir, 0750)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	first := strings.LastIndex(dst, "/")
-	last := first + strings.Index(dst[first:], "_")
-	src := filepath.Join(testFiles,
-		"forvo_"+cfg["LANG"]+"_"+dst[first+1:last]+"."+cfg["ATYPE"])
-
-	copyFile(src, dst)
-
-	return nil
-}
-
-// copyFile just a helper function to copy file in a more comfortable way
-func copyFile(src, dst string) {
-	in, err := os.Open(src)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer in.Close()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	if err != nil {
-		log.Fatal(err)
-	}
 }
