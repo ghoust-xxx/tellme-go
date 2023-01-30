@@ -64,10 +64,15 @@ func mainLoop(cfg Config, args []string) {
 		}
 
 		if cfg["INTERACTIVE"] == "no" {
-			if len(list) == 0 {
-				continue
+			if len(list) != 0 {
+				saveWord(list[0])
 			}
-			saveWord(list[0])
+			i++
+			newWord = true
+			word, err = getWord(i)
+			if err != nil {
+				break
+			}
 			continue
 		} else {
 			key := printMenu(curItem, word, list, errMessage)

@@ -27,6 +27,7 @@ const configFileComment = "TellMe configuration file"
 
 var configDefaults []configFileValue
 var confDir, confFile, cacheDir string
+var fs *flag.FlagSet
 
 // configInit makes sure config file and cache dir exist and read config values.
 func configInit() {
@@ -55,7 +56,7 @@ func optionsValidation() {
 // updateFromCmdLine get command line params and update app config values
 // accordingly.
 func updateFromCmdLine() {
-	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	fs = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
 	for _, val := range configDefaults {
 		switch val.ftype {
@@ -72,9 +73,20 @@ func updateFromCmdLine() {
 		}
 	}
 	pFile := fs.String("f", "", "read input from `filename`")
+	fs.Usage = usage
 	fs.Parse(os.Args[1:])
 	cfg["FILE"] = *pFile
 	os.Args = fs.Args()
+}
+
+// usage expand standart usage function from flag package
+func usage() {
+	fmt.Fprintf(fs.Output(), "Usage: %s [options] [words for pronunciation]\n\n",
+		filepath.Base(os.Args[0]))
+	fmt.Fprint(fs.Output(), "  -f [filename]\n")
+	fmt.Fprint(fs.Output(), "\tfile with words for pronunciation\n")
+	fs.PrintDefaults()
+	os.Exit(0)
 }
 
 // buildYesNo parses [yes | no] args type
@@ -231,7 +243,7 @@ func setDefaultConfigFileValues() {
 			fname:   "check",
 			ftype:   "yesno",
 		}, {
-			comment: "download audiofiles in current directory `[yes | no]`. Default yes",
+			comment: "download audio files in current directory `[yes | no]`. Default yes",
 			key:     "DOWNLOAD",
 			value:   "yes",
 			fname:   "d",
@@ -255,13 +267,13 @@ func setDefaultConfigFileValues() {
 			fname:   "l",
 			ftype:   "lang",
 		}, {
-			comment: "audiofiles type `[mp3 | ogg ]`. Default mp3",
+			comment: "audio files type `[mp3 | ogg ]`. Default mp3",
 			key:     "ATYPE",
 			value:   "mp3",
 			fname:   "t",
 			ftype:   "aformat",
 		}, {
-			comment: "verbose mode [yes | no]. Default no",
+			comment: "verbose mode `[yes | no]`. Default no",
 			key:     "VERBOSE",
 			value:   "no",
 			fname:   "verbose",
