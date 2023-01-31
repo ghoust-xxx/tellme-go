@@ -36,14 +36,12 @@ var clearScreen func()
 var words []string
 var scanner *bufio.Scanner
 var tmpDir string
-var inputFile *os.File
 
 // mainLoop is process all input word by word
 func mainLoop(cfg Config, args []string) {
 	getHTML = getTestURL
 	getAudio = downloadTestFile
 	clearScreen = clearScreenInit()
-	wordListInit(cfg, args)
 
 	tmpDir, err := ioutil.TempDir("", "tellme")
 	if err != nil {
@@ -51,161 +49,211 @@ func mainLoop(cfg Config, args []string) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	i := 0
-	curItem := 0
-	var errMessage string
-	newWord := true
-	var list []Pron
-	word, err := getWord(i)
-	for {
-		if newWord {
-			list = getPronList(cfg, word)
-			newWord = false
+	if cfg["INTERACTIVE"] == "no" {
+		if len(args) > 0 {
+			loopNonInArgs(cfg, args)
+			return
 		}
-
-		if cfg["INTERACTIVE"] == "no" {
-			if len(list) != 0 {
-				saveWord(list[0])
-			}
-			i++
-			newWord = true
-			word, err = getWord(i)
-			if err != nil {
-				break
-			}
-			continue
-		} else {
-			key := printMenu(curItem, word, list, errMessage)
-			errMessage = ""
-			switch key {
-			case "q":
-				return
-			case "p":
-				i--
-				curItem = 0
-				newWord = true
-				word, err = getWord(i)
-				if err != nil {
-					errMessage = err.Error()
-					i++
-				}
-			case "n", "\n":
-				i++
-				curItem = 0
-				newWord = true
-				word, err = getWord(i)
-				if err != nil {
-					errMessage = err.Error()
-					i--
-				}
-			case "r":
-			case "j":
-				curItem++
-				if curItem >= len(list) {
-					curItem = 0
-				}
-			case "k":
-				curItem--
-				if curItem < 0 {
-					curItem = len(list) - 1
-				}
-			default:
-				curItem, _ = strconv.Atoi(key)
-			}
-		}
-	}
-
-	inputFile.Close()
-}
-
-// wordListInit populate word list in case of cmd-line arguments or open
-// input file/STDIO for reading otherwise
-func wordListInit(cfg Config, args []string) {
-	if len(args) > 0 {
-		words = append(words, args...)
-		getWord = getWordArgs
-	} else {
-		var err error
 		if cfg["FILE"] != "" {
-			inputFile, err = os.Open(cfg["FILE"])
-		} else {
-			inputFile = os.Stdin
+			loopNonInFile(cfg)
+			return
 		}
-		if err != nil {
-			log.Fatal(err)
+		loopNonInStdin(cfg)
+		return
+	} else if cfg["INTERACTIVE"] == "yes" {
+		if len(args) > 0 {
+			loopInArgs(cfg, args)
+			return
 		}
+		if cfg["FILE"] != "" {
+			loopInFile(cfg)
+			return
+		}
+		loopInStdin(cfg)
+		return
+	}
+	return
+}
 
-		scanner = bufio.NewScanner(inputFile)
-		getWord = getWordFile
+func loopNonInArgs(cfg Config, args []string) {
+	for _, word := range args {
+		if word == "" {
+			continue
+		}
+		list := getPronList(cfg, word)
+		if len(list) > 0 {
+			saveWord(list[0])
+		}
 	}
 }
 
-// getWordArgs return i-th word if we used cmd-line arguments
-func getWordArgs(i int) (string, error) {
-	if i >= 0 && i < len(words) {
-		return words[i], nil
+func loopNonInFile(cfg Config) {
+	file, err := os.Open(cfg["FILE"])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s", err)
+		os.Exit(1)
 	}
 
-	if i < 0 {
-		return words[0], errors.New("The beginning of the list")
-	}
-
-	if i >= len(words) {
-		return words[len(words)-1], errors.New("The end of the list")
-	}
-	return "", nil
-}
-
-// getWordFile return i-th word if we used file or STDIO as words source
-func getWordFile(i int) (string, error) {
-	if i >= 0 && i < len(words) {
-		return words[i], nil
-	}
-
-	if i < 0 {
-		return words[0], errors.New("The beginning of the list")
-	}
-
-	if i >= len(words) {
-		if !scanner.Scan() {
-			if err := scanner.Err(); err != nil {
-				log.Fatal(err)
-			}
-			return words[len(words)-1], errors.New("The end of the list")
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		word := scanner.Text()
+		if word == "" {
+			continue
 		}
-		words = append(words, scanner.Text())
-		return words[len(words)-1], nil
+		list := getPronList(cfg, word)
+		if len(list) > 0 {
+			saveWord(list[0])
+		}
 	}
-	return "", nil
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s", err)
+		os.Exit(1)
+	}
 }
 
-// printMenu prints user menu and returs his response (command or a number)
-func printMenu(curItem int, word string, list []Pron, errMessage string) string {
-UPDATE_PRINT:
+func loopNonInStdin(cfg Config) {
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		word := scanner.Text()
+		if word == "" {
+			continue
+		}
+		list := getPronList(cfg, word)
+		if len(list) > 0 {
+			saveWord(list[0])
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s", err)
+		os.Exit(1)
+	}
+}
+
+func loopInArgs(cfg Config, args []string) {
+	for i := 0; i < len(args); i++ {
+		if args[i] != "" {
+			words = append(words, args[i])
+		}
+	}
+	if len(words) == 0 {
+		return
+	}
+
+	wordIdx := 0
+	pronIdx := 0
+	for {
+		list := getPronList(cfg, words[wordIdx])
+		if len(list) == 0 {
+			printNoPron(words[wordIdx], wordIdx == 0, wordIdx == len(words)-1)
+		}
+		key := printMenu(list, pronIdx, wordIdx == 0, wordIdx == len(words)-1)
+		switch key {
+		case "q":
+			return
+		case "p":
+			wordIdx--
+			pronIdx = 0
+		case "n", "\n":
+			wordIdx++
+			pronIdx = 0
+		case "r":
+		case "j":
+			pronIdx++
+		case "k":
+			pronIdx--
+		default:
+		}
+	}
+}
+
+func loopInFile(cfg Config) {
+}
+
+func loopInStdin(cfg Config) {
+}
+
+func printNoPron(word string, isFirstWord, isLastWord bool) string {
+	optLine := fmt.Sprintf("Can not get pronunciation for `%s`\n\n", word)
+	allowedChars := "tq"
+	if !isLastWord {
+		optLine += "[n|<Enter>]:next word    "
+		allowedChars += "n\n"
+	}
+	if !isFirstWord {
+		optLine += "[p]:previous word    "
+		allowedChars += "p"
+	}
+	optLine += "[t]:try again    [q]:quit\n"
+
 	clearScreen()
 	fmt.Println(word)
-	fmt.Println(strings.Repeat("=", len(word)), "\n")
+	fmt.Println(strings.Repeat("=", len(word)), "\n\n")
+	fmt.Print(optLine)
+
+	for {
+		char := getChar()
+		if strings.Index(allowedChars, char) == -1 {
+			continue
+		}
+		return char
+	}
+}
+
+func printMenu(list []Pron, pronIdx int, isFirstWord, isLastWord bool) string {
+	word := list[0].word
+	pronLines := word + "\n"
+	pronLines += fmt.Sprintln(strings.Repeat("=", len(word)))
 	digitsNum := len(strconv.Itoa(len(list)))
 	for i, item := range list {
 		star := " "
-		if i == curItem {
+		if i == pronIdx {
 			star = "*"
 		}
-		fmt.Printf("%s %0"+strconv.Itoa(digitsNum)+"d\tBy %s\n",
+		pronLines += fmt.Sprintf("%s %0"+strconv.Itoa(digitsNum)+"d\tBy %s\n",
 			star, i, item.fullAuthor)
 	}
-	fmt.Print("\n\n")
-	fmt.Printf("[0-%d]:choose pronunciation    [n|<Enter>]:next word    [p]:previous word\n"+
-		"[j]:next pronunciation    [k]:previous pronunciation    [r]:repeat again    [q]:quit\n",
-		len(list)-1)
-	if errMessage != "" {
-		fmt.Printf("\n%s\n", errMessage)
+	pronLines += "\n"
+
+	optLine := ""
+	allowedChars := "rq"
+	if len(list) != 1 {
+		optLine += fmt.Sprintf("[0-%d]:choose pronunciation    ", len(list)-1)
+		allowedChars += "1234567890"
+	}
+	if pronIdx != len(list)-1 {
+		optLine += "[j]:next pronunciation    "
+		allowedChars += "j"
+	}
+	if pronIdx != 0 {
+		optLine += "[k]:previous pronunciation    "
+		allowedChars += "k"
+	}
+	optLine += "[r]:replay sound    "
+
+	if !isLastWord {
+		optLine += "[n|<Enter>]:next word    "
+		allowedChars += "n\n"
+	}
+	if !isFirstWord {
+		optLine += "[p]:previous word"
+		allowedChars += "p"
+	}
+	optLine += "[q]:quit\n"
+
+	alreadySaid := false
+UPDATE_PRINT:
+	clearScreen()
+	fmt.Print(pronLines)
+	fmt.Print(optLine)
+
+	if !alreadySaid {
+		aPath := saveWord(list[pronIdx])
+		sayWord(aPath)
+		alreadySaid = true
 	}
 
-	aPath := saveWord(list[curItem])
-	sayWord(aPath)
-
-	allowedChars := "\n1234567890npjkrq"
 	var choosenItem string
 	for {
 		char := getChar()
@@ -234,7 +282,9 @@ UPDATE_PRINT:
 // saveWord saves mp3/ogg file in cache and in current directory. If cache
 // enabled and file already in it returns the word from the cache
 func saveWord(item Pron) string {
-	fmt.Println("Save word: ", item.word)
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Printf("Saving audio file: `%s`\n", item.aFile)
+	}
 
 	if cfg["CACHE"] == "yes" {
 		_, err := os.Stat(item.cacheFile)
@@ -277,10 +327,13 @@ func saveWord(item Pron) string {
 
 // getPronList gets a pronunciation list for a specific word
 func getPronList(cfg Config, word string) (result []Pron) {
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Printf("Extracting pronunciation list for `%s`\n", word)
+	}
 	pageURL := fmt.Sprintf("%s/word/%s/#%s", forvoURL, word, cfg["LANG"])
 	pageText, err := getHTML(pageURL)
 	if err != nil {
-		log.Printf("can not get pronunciation page for '%s'!\n", word)
+		fmt.Fprintf(os.Stderr, "can not get pronunciation page for '%s'!\n", word)
 		return
 	}
 
@@ -290,7 +343,8 @@ func getPronList(cfg Config, word string) (result []Pron) {
 	wordsBlockRe := regexp.MustCompile(wordsBlockStr)
 	wordsBlock := wordsBlockRe.FindString(pageText)
 	if wordsBlock == "" {
-		log.Fatal("can not extract words block")
+		fmt.Fprintln(os.Stderr, "can not extract words block")
+		os.Exit(1)
 	}
 
 	// extract every pronunciation <li> chunks
@@ -298,7 +352,8 @@ func getPronList(cfg Config, word string) (result []Pron) {
 	pronRe := regexp.MustCompile(pronStr)
 	pronBlocks := pronRe.FindAllString(wordsBlock, -1)
 	if pronBlocks == nil {
-		log.Fatal("can not extract separate pronunciations blocks")
+		fmt.Fprintln(os.Stderr, "can not extract separate pronunciations blocks")
+		os.Exit(1)
 	}
 	for _, chunk := range pronBlocks {
 		result = append(result, extractItem(cfg, word, chunk))
@@ -318,13 +373,15 @@ func extractItem(cfg Config, word, chunk string) Pron {
 	chunkRe := regexp.MustCompile(chunkStr)
 	items := chunkRe.FindStringSubmatch(chunk)
 	if items == nil {
-		log.Fatal("can not extract items from pronunciation block")
+		fmt.Fprintln(os.Stderr, "can not extract items from pronunciation block")
+		os.Exit(1)
 	}
 
 	encodedMp3 := items[1]
 	decodedMp3, err := base64.StdEncoding.DecodeString(encodedMp3)
 	if err != nil {
-		log.Print(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	item.mp3 = audioURL + "/mp3/" + string(decodedMp3)
 	item.ogg = audioURL + "/ogg/" + string(decodedMp3)
@@ -359,6 +416,5 @@ func extractItem(cfg Config, word, chunk string) Pron {
 
 	item.aFile = word + "." + cfg["ATYPE"]
 
-	//printPron(item)
 	return item
 }

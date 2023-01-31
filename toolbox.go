@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -20,7 +19,8 @@ import (
 func sayWord(path string) {
 	mpg123 := exec.Command("mpg123", "-q", path)
 	if err := mpg123.Run(); err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 
@@ -54,19 +54,22 @@ func clearScreenInit() func() {
 func getChar() string {
 	state, err := term.MakeRaw(0)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	defer func() {
 		err := term.Restore(0, state)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	}()
 
 	in := bufio.NewReader(os.Stdin)
 	char, _, err := in.ReadRune()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	if char == '\r' {
@@ -96,7 +99,8 @@ func getURL(url string) (string, error) {
 
 	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	return string(bytes), nil
 }
@@ -108,7 +112,7 @@ func getTestURL(url string) (string, error) {
 	f, err := os.Open(filepath.Join(
 		testFiles, "forvo_"+cfg["LANG"]+"_"+url[first:last]+".html"))
 	if err != nil {
-		log.Print(err)
+		fmt.Fprintln(os.Stderr, err)
 	}
 	defer f.Close()
 	text, _ := io.ReadAll(f)
@@ -125,12 +129,14 @@ func downloadFile(url, dst string) error {
 	dir := filepath.Dir(dst)
 	err := os.MkdirAll(dir, 0750)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	f, err := os.Create(dst)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	defer f.Close()
 
@@ -151,7 +157,8 @@ func downloadFile(url, dst string) error {
 
 	_, err = io.Copy(f, resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	return nil
@@ -159,10 +166,13 @@ func downloadFile(url, dst string) error {
 
 // downloadTestFile can be used in tests and download audio file from file system
 func downloadTestFile(url, dst string) error {
+	fmt.Println("111111111")
+	getChar()
 	dir := filepath.Dir(dst)
 	err := os.MkdirAll(dir, 0750)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	first := strings.LastIndex(dst, "/")
@@ -179,18 +189,21 @@ func downloadTestFile(url, dst string) error {
 func copyFile(src, dst string) {
 	in, err := os.Open(src)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	defer in.Close()
 
 	out, err := os.Create(dst)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	defer out.Close()
 
 	_, err = io.Copy(out, in)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
