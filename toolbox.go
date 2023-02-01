@@ -11,9 +11,16 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 )
+
+const getRepeats = 10
+const getTimeout = 5 * time.Second
+const downloadRepeats = 10
+const downloadTimeout = 5 * time.Second
+const testFiles = "local_files"
 
 // sayWord tries to play audiofile with pronunciation using mpg123 cmd-line app
 func sayWord(path string) {
@@ -25,28 +32,22 @@ func sayWord(path string) {
 }
 
 // clearScreenInit prepare platform independent function for terminal clearing
-func clearScreenInit() func() {
+func clearScreen() {
 	switch runtime.GOOS {
 	case "linux":
-		return func() {
-			cmd := exec.Command("clear")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		}
+		cmd := exec.Command("clear")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
 	case "darwin":
-		return func() {
-			cmd := exec.Command("clear")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		}
+		cmd := exec.Command("clear")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
 	case "windows":
-		return func() {
-			cmd := exec.Command("cmd", "/c", "cls")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		}
+		cmd := exec.Command("cmd", "/c", "cls")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
 	default:
-		return func() {}
+		return
 	}
 }
 
@@ -166,8 +167,6 @@ func downloadFile(url, dst string) error {
 
 // downloadTestFile can be used in tests and download audio file from file system
 func downloadTestFile(url, dst string) error {
-	fmt.Println("111111111")
-	getChar()
 	dir := filepath.Dir(dst)
 	err := os.MkdirAll(dir, 0750)
 	if err != nil {

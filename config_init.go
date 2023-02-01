@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -49,7 +48,9 @@ func setConfigValues() {
 // optionsValidation check if current flag combination is allowed
 func optionsValidation() {
 	if len(os.Args) > 0 && cfg["FILE"] != "" {
-		log.Fatal("you can use only --file options or words in command line, not both")
+		fmt.Fprintln(os.Stderr,
+			"you can use only --file options or words in command line, not both")
+		os.Exit(1)
 	}
 }
 
@@ -135,7 +136,8 @@ func buildAFormat(val configFileValue) func(s string) error {
 func updateFromConfigFile() {
 	cFile, err := os.Open(confFile)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	defer cFile.Close()
 
@@ -154,22 +156,24 @@ func updateFromConfigFile() {
 
 		matches := iniLine.FindStringSubmatch(string(line))
 		if matches == nil {
-			log.Fatal(
-				fmt.Sprintf("error in config file %v, line %v", confFile, cnt))
+			fmt.Fprintf(os.Stderr,
+				"error in config file %v, line %v", confFile, cnt)
+			os.Exit(1)
 		}
 
 		key := matches[1]
 		value := matches[2]
 		if _, ok := cfg[key]; !ok {
-			log.Fatal(
-				fmt.Sprintf("nonexisting key in config file %v, line %v",
-					confFile, cnt))
+			fmt.Fprintf(os.Stderr,
+				"nonexisting key in config file %v, line %v", confFile, cnt)
+			os.Exit(1)
 		}
 
 		cfg[key] = value
 	}
 	if err = scanner.Err(); err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 
@@ -192,12 +196,14 @@ func checkConfig() {
 	// Create it if it does not.
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	userConfDir, err := os.UserConfigDir()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	confDir = filepath.Join(userHomeDir, "."+confDirName)
@@ -208,7 +214,8 @@ func checkConfig() {
 		if errors.Is(err, os.ErrNotExist) {
 			err = os.Mkdir(confDir, 0750)
 			if err != nil {
-				log.Fatal(err)
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
 			}
 		}
 	}
@@ -226,7 +233,8 @@ func checkConfig() {
 func setDefaultConfigFileValues() {
 	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	configDefaults = []configFileValue{
@@ -286,13 +294,15 @@ func setDefaultConfigFileValues() {
 func createNewConf() {
 	f, err := os.OpenFile(confFile, os.O_RDWR|os.O_CREATE, 0640)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	defer func() {
 		err = f.Close()
 		if err != nil {
-			log.Fatal(err)
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	}()
 
@@ -310,7 +320,8 @@ func createNewConf() {
 
 	_, err = f.WriteString(defaultConfig.String())
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 
@@ -321,12 +332,14 @@ func checkCache() {
 	// Create it if it does not.
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	cacheDir = filepath.Join(userHomeDir, "."+confDirName, cacheDirName)
@@ -337,7 +350,8 @@ func checkCache() {
 		if errors.Is(err, os.ErrNotExist) {
 			err = os.Mkdir(cacheDir, 0750)
 			if err != nil {
-				log.Fatal(err)
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
 			}
 		}
 	}

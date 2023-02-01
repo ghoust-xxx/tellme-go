@@ -7,22 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const forvoURL = "https://forvo.com"
 const audioURL = "https://audio00.forvo.com/audios"
-const testFiles = "local_files"
-const getRepeats = 10
-const getTimeout = 5 * time.Second
-const downloadRepeats = 10
-const downloadTimeout = 5 * time.Second
 
 type Pron struct {
 	word, author, sex, country, mp3, ogg, aFile, aURL, fullAuthor, cacheDir,
@@ -32,20 +25,17 @@ type Pron struct {
 var getHTML func(url string) (string, error)
 var getAudio func(url, dst string) error
 var getWord func(i int) (string, error)
-var clearScreen func()
-var words []string
-var scanner *bufio.Scanner
 var tmpDir string
 
 // mainLoop is process all input word by word
 func mainLoop(cfg Config, args []string) {
 	getHTML = getTestURL
 	getAudio = downloadTestFile
-	clearScreen = clearScreenInit()
 
 	tmpDir, err := ioutil.TempDir("", "tellme")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -53,23 +43,22 @@ func mainLoop(cfg Config, args []string) {
 		if len(args) > 0 {
 			loopNonInArgs(cfg, args)
 			return
-		}
-		if cfg["FILE"] != "" {
+		} else if cfg["FILE"] != "" {
 			loopNonInFile(cfg)
 			return
+		} else {
+			loopNonInStdin(cfg)
 		}
-		loopNonInStdin(cfg)
 		return
 	} else if cfg["INTERACTIVE"] == "yes" {
 		if len(args) > 0 {
 			loopInArgs(cfg, args)
 			return
-		}
-		if cfg["FILE"] != "" {
+		} else if cfg["FILE"] != "" {
 			loopInFile(cfg)
-			return
+		} else {
+			loopInStdin(cfg)
 		}
-		loopInStdin(cfg)
 		return
 	}
 	return
@@ -90,9 +79,10 @@ func loopNonInArgs(cfg Config, args []string) {
 func loopNonInFile(cfg Config) {
 	file, err := os.Open(cfg["FILE"])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -107,7 +97,7 @@ func loopNonInFile(cfg Config) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "%s", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -126,12 +116,13 @@ func loopNonInStdin(cfg Config) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "%s", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 func loopInArgs(cfg Config, args []string) {
+	var words []string
 	for i := 0; i < len(args); i++ {
 		if args[i] != "" {
 			words = append(words, args[i])
@@ -143,12 +134,14 @@ func loopInArgs(cfg Config, args []string) {
 
 	wordIdx := 0
 	pronIdx := 0
+	var key string
 	for {
 		list := getPronList(cfg, words[wordIdx])
 		if len(list) == 0 {
-			printNoPron(words[wordIdx], wordIdx == 0, wordIdx == len(words)-1)
+			key = printNoPron(words[wordIdx], wordIdx == 0, wordIdx == len(words)-1)
+		} else {
+			key = printMenu(list, pronIdx, wordIdx == 0, wordIdx == len(words)-1)
 		}
-		key := printMenu(list, pronIdx, wordIdx == 0, wordIdx == len(words)-1)
 		switch key {
 		case "q":
 			return
@@ -163,20 +156,144 @@ func loopInArgs(cfg Config, args []string) {
 			pronIdx++
 		case "k":
 			pronIdx--
+		case "t":
+		case "e":
+			newWord := getNewWord()
+			words = append(words[:wordIdx+1], words[wordIdx:]...)
+			words[wordIdx] = newWord
+			pronIdx = 0
 		default:
 		}
 	}
 }
 
 func loopInFile(cfg Config) {
+	var words []string
+	file, err := os.Open(cfg["FILE"])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	wordIdx := 0
+	pronIdx := 0
+	eof := false
+	var key string
+	for {
+		// read a new word
+		if wordIdx == len(words) && !eof {
+			if scanner.Scan() {
+				newWord := scanner.Text()
+				if newWord == "" {
+					continue
+				}
+				words = append(words, newWord)
+				wordIdx = len(words) - 1
+				pronIdx = 0
+			} else if err := scanner.Err(); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			} else {
+				wordIdx = len(words) - 1
+				eof = true
+			}
+		}
+		list := getPronList(cfg, words[wordIdx])
+		if len(list) == 0 {
+			key = printNoPron(words[wordIdx], wordIdx == 0, wordIdx == len(words)-1 && eof)
+		} else {
+			key = printMenu(list, pronIdx, wordIdx == 0, wordIdx == len(words)-1 && eof)
+		}
+		switch key {
+		case "q":
+			return
+		case "p":
+			wordIdx--
+			pronIdx = 0
+		case "n", "\n":
+			wordIdx++
+			pronIdx = 0
+		case "r":
+		case "j":
+			pronIdx++
+		case "k":
+			pronIdx--
+		case "t":
+		case "e":
+			newWord := getNewWord()
+			words = append(words[:wordIdx+1], words[wordIdx:]...)
+			words[wordIdx] = newWord
+			pronIdx = 0
+		default:
+		}
+	}
 }
 
 func loopInStdin(cfg Config) {
+	var words []string
+	wordIdx := 0
+	pronIdx := 0
+	var key string
+
+	newWord := getNewWord()
+	words = append(words, newWord)
+	for {
+		list := getPronList(cfg, words[wordIdx])
+		if len(list) == 0 {
+			key = printNoPron(words[wordIdx], wordIdx == 0, wordIdx == len(words)-1)
+		} else {
+			key = printMenu(list, pronIdx, wordIdx == 0, wordIdx == len(words)-1)
+		}
+		switch key {
+		case "q":
+			return
+		case "p":
+			wordIdx--
+			pronIdx = 0
+		case "n", "\n":
+			wordIdx++
+			pronIdx = 0
+		case "r":
+		case "j":
+			pronIdx++
+		case "k":
+			pronIdx--
+		case "t":
+		case "e":
+			newWord := getNewWord()
+			words = append(words[:wordIdx+1], words[wordIdx:]...)
+			words[wordIdx] = newWord
+			pronIdx = 0
+		default:
+		}
+	}
+}
+
+func getNewWord() string {
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("Enter a new word: ")
+	for scanner.Scan() {
+		word := scanner.Text()
+		if word == "" {
+			fmt.Print("Enter a new word: ")
+			continue
+		}
+		return word
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	return ""
 }
 
 func printNoPron(word string, isFirstWord, isLastWord bool) string {
 	optLine := fmt.Sprintf("Can not get pronunciation for `%s`\n\n", word)
-	allowedChars := "tq"
+	allowedChars := "tqe"
 	if !isLastWord {
 		optLine += "[n|<Enter>]:next word    "
 		allowedChars += "n\n"
@@ -185,11 +302,11 @@ func printNoPron(word string, isFirstWord, isLastWord bool) string {
 		optLine += "[p]:previous word    "
 		allowedChars += "p"
 	}
-	optLine += "[t]:try again    [q]:quit\n"
+	optLine += "[t]:try again    [e]:enter a new word    [q]:quit\n"
 
 	clearScreen()
 	fmt.Println(word)
-	fmt.Println(strings.Repeat("=", len(word)), "\n\n")
+	fmt.Println(strings.Repeat("=", len(word)))
 	fmt.Print(optLine)
 
 	for {
@@ -217,7 +334,7 @@ func printMenu(list []Pron, pronIdx int, isFirstWord, isLastWord bool) string {
 	pronLines += "\n"
 
 	optLine := ""
-	allowedChars := "rq"
+	allowedChars := "erq"
 	if len(list) != 1 {
 		optLine += fmt.Sprintf("[0-%d]:choose pronunciation    ", len(list)-1)
 		allowedChars += "1234567890"
@@ -237,10 +354,10 @@ func printMenu(list []Pron, pronIdx int, isFirstWord, isLastWord bool) string {
 		allowedChars += "n\n"
 	}
 	if !isFirstWord {
-		optLine += "[p]:previous word"
+		optLine += "[p]:previous word    "
 		allowedChars += "p"
 	}
-	optLine += "[q]:quit\n"
+	optLine += "[e]:enter a new word    [q]:quit\n"
 
 	alreadySaid := false
 UPDATE_PRINT:
