@@ -42,28 +42,25 @@ func mainLoop(cfg Config, args []string) {
 	if cfg["INTERACTIVE"] == "no" {
 		if len(args) > 0 {
 			loopNonInArgs(cfg, args)
-			return
 		} else if cfg["FILE"] != "" {
 			loopNonInFile(cfg)
-			return
 		} else {
 			loopNonInStdin(cfg)
 		}
-		return
 	} else if cfg["INTERACTIVE"] == "yes" {
 		if len(args) > 0 {
 			loopInArgs(cfg, args)
-			return
 		} else if cfg["FILE"] != "" {
 			loopInFile(cfg)
 		} else {
 			loopInStdin(cfg)
 		}
-		return
 	}
 	return
 }
 
+// loopNonInArgs is loop for non-interactive processing with getting words from
+// argument list
 func loopNonInArgs(cfg Config, args []string) {
 	for _, word := range args {
 		if word == "" {
@@ -76,6 +73,8 @@ func loopNonInArgs(cfg Config, args []string) {
 	}
 }
 
+// loopNonInFile is loop for non-interactive processing with getting words from
+// the file
 func loopNonInFile(cfg Config) {
 	file, err := os.Open(cfg["FILE"])
 	if err != nil {
@@ -102,6 +101,8 @@ func loopNonInFile(cfg Config) {
 	}
 }
 
+// loopNonInStdin is loop for non-interactive processing with getting words from
+// standart input
 func loopNonInStdin(cfg Config) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -121,6 +122,8 @@ func loopNonInStdin(cfg Config) {
 	}
 }
 
+// loopInArgs is loop for interactive processing with getting words from
+// argument list
 func loopInArgs(cfg Config, args []string) {
 	var words []string
 	for i := 0; i < len(args); i++ {
@@ -167,6 +170,8 @@ func loopInArgs(cfg Config, args []string) {
 	}
 }
 
+// loopInFile is loop for interactive processing with getting words from
+// the file
 func loopInFile(cfg Config) {
 	var words []string
 	file, err := os.Open(cfg["FILE"])
@@ -232,6 +237,8 @@ func loopInFile(cfg Config) {
 	}
 }
 
+// loopInStdin is loop for interactive processing with getting words from
+// standart input
 func loopInStdin(cfg Config) {
 	var words []string
 	wordIdx := 0
@@ -272,6 +279,7 @@ func loopInStdin(cfg Config) {
 	}
 }
 
+// getNewWord shows promt for user and returns entered word
 func getNewWord() string {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Print("Enter a new word: ")
@@ -291,6 +299,8 @@ func getNewWord() string {
 	return ""
 }
 
+// printNoPron handles case if we can not find pronunciations for this word.
+// Could be be some network issues. In this case you can retray
 func printNoPron(word string, isFirstWord, isLastWord bool) string {
 	optLine := fmt.Sprintf("Can not get pronunciation for `%s`\n\n", word)
 	allowedChars := "tqe"
@@ -318,7 +328,10 @@ func printNoPron(word string, isFirstWord, isLastWord bool) string {
 	}
 }
 
+// printMenu outputs list of pronunciations and handles user input. Return
+// one of allowed keys
 func printMenu(list []Pron, pronIdx int, isFirstWord, isLastWord bool) string {
+	// format list of pronunciations
 	word := list[0].word
 	pronLines := word + "\n"
 	pronLines += fmt.Sprintln(strings.Repeat("=", len(word)))
@@ -333,6 +346,7 @@ func printMenu(list []Pron, pronIdx int, isFirstWord, isLastWord bool) string {
 	}
 	pronLines += "\n"
 
+	// format user help status bar
 	optLine := ""
 	allowedChars := "erq"
 	if len(list) != 1 {
@@ -365,12 +379,14 @@ UPDATE_PRINT:
 	fmt.Print(pronLines)
 	fmt.Print(optLine)
 
+	// play pronunciation audio file
 	if !alreadySaid {
 		aPath := saveWord(list[pronIdx])
 		sayWord(aPath)
 		alreadySaid = true
 	}
 
+	// handle user input
 	var choosenItem string
 	for {
 		char := getChar()

@@ -46,8 +46,6 @@ func clearScreen() {
 		cmd := exec.Command("cmd", "/c", "cls")
 		cmd.Stdout = os.Stdout
 		cmd.Run()
-	default:
-		return
 	}
 }
 
@@ -126,7 +124,6 @@ func getTestURL(url string) (string, error) {
 // first checks cache directory. If file is missing function downloads it
 // to the cache directory and then copy it to the current location.
 func downloadFile(url, dst string) error {
-	fmt.Println("download...")
 	dir := filepath.Dir(dst)
 	err := os.MkdirAll(dir, 0750)
 	if err != nil {

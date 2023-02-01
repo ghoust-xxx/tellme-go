@@ -171,6 +171,7 @@ func updateFromConfigFile() {
 
 		cfg[key] = value
 	}
+
 	if err = scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
