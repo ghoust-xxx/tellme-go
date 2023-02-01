@@ -81,6 +81,9 @@ func getChar() string {
 // getURL gets a web page, handles possible errors and returns the web page
 // content as a string
 func getURL(url string) (string, error) {
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Printf("Download page: `%s`\n", url)
+	}
 	client := http.Client{
 		Timeout: getTimeout,
 	}
@@ -106,6 +109,9 @@ func getURL(url string) (string, error) {
 
 // getTestURL can be used in tests and gets web pages from file system
 func getTestURL(url string) (string, error) {
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Printf("Download test page: `%s`\n", url)
+	}
 	last := strings.LastIndex(url, "/")
 	first := strings.LastIndex(url[:last], "/") + 1
 	f, err := os.Open(filepath.Join(
@@ -124,6 +130,9 @@ func getTestURL(url string) (string, error) {
 // first checks cache directory. If file is missing function downloads it
 // to the cache directory and then copy it to the current location.
 func downloadFile(url, dst string) error {
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Printf("Download file: `%s`\n", url)
+	}
 	dir := filepath.Dir(dst)
 	err := os.MkdirAll(dir, 0750)
 	if err != nil {
@@ -164,6 +173,9 @@ func downloadFile(url, dst string) error {
 
 // downloadTestFile can be used in tests and download audio file from file system
 func downloadTestFile(url, dst string) error {
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Printf("Download test file: `%s`\n", url)
+	}
 	dir := filepath.Dir(dst)
 	err := os.MkdirAll(dir, 0750)
 	if err != nil {
@@ -183,6 +195,9 @@ func downloadTestFile(url, dst string) error {
 
 // copyFile just a helper function to copy file in a more comfortable way
 func copyFile(src, dst string) {
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Printf("Copy file: `%s`\n", src)
+	}
 	in, err := os.Open(src)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

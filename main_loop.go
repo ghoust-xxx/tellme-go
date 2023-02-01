@@ -166,6 +166,7 @@ func loopInArgs(cfg Config, args []string) {
 			words[wordIdx] = newWord
 			pronIdx = 0
 		default:
+			pronIdx, _ = strconv.Atoi(key)
 		}
 	}
 }
@@ -233,6 +234,7 @@ func loopInFile(cfg Config) {
 			words[wordIdx] = newWord
 			pronIdx = 0
 		default:
+			pronIdx, _ = strconv.Atoi(key)
 		}
 	}
 }
@@ -275,6 +277,7 @@ func loopInStdin(cfg Config) {
 			words[wordIdx] = newWord
 			pronIdx = 0
 		default:
+			pronIdx, _ = strconv.Atoi(key)
 		}
 	}
 }

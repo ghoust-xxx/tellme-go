@@ -25,7 +25,7 @@ const cacheDirName = "cache"
 const configFileComment = "TellMe configuration file"
 
 var configDefaults []configFileValue
-var confDir, confFile, cacheDir string
+var confFile string
 var fs *flag.FlagSet
 
 // configInit makes sure config file and cache dir exist and read config values.
@@ -134,6 +134,9 @@ func buildAFormat(val configFileValue) func(s string) error {
 // updateFromConfigFile read config file and updates app config values
 // accordingly.
 func updateFromConfigFile() {
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Println("Read config file: `%s`\n", confFile)
+	}
 	cFile, err := os.Open(confFile)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -207,7 +210,7 @@ func checkConfig() {
 		os.Exit(1)
 	}
 
-	confDir = filepath.Join(userHomeDir, "."+confDirName)
+	confDir := filepath.Join(userHomeDir, "."+confDirName)
 	_, err = os.Stat(confDir)
 	if errors.Is(err, os.ErrNotExist) {
 		confDir = filepath.Join(userConfDir, confDirName)
@@ -293,6 +296,9 @@ func setDefaultConfigFileValues() {
 
 // createNewConf write a new config file with all default values and comments
 func createNewConf() {
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Println("Create a new config file: `%s`\n", confFile)
+	}
 	f, err := os.OpenFile(confFile, os.O_RDWR|os.O_CREATE, 0640)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -326,34 +332,17 @@ func createNewConf() {
 	}
 }
 
-// checkCache checks if $HOME/.tellme/cache/ || $XDG_CACHE_HOME/tellme/ exists.
-// If it is not tries to create them in $XDG paths.
+// checkCache checks if cfg["CACHE_DIR"] exists If it is not tries to create it
 func checkCache() {
-	// Check if cache directory already exists.
-	// Create it if it does not.
-	userHomeDir, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	userCacheDir, err := os.UserCacheDir()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	cacheDir = filepath.Join(userHomeDir, "."+confDirName, cacheDirName)
-	_, err = os.Stat(cacheDir)
+	_, err := os.Stat(cfg["CACHE_DIR"])
 	if errors.Is(err, os.ErrNotExist) {
-		cacheDir = filepath.Join(userCacheDir, confDirName)
-		_, err = os.Stat(cacheDir)
-		if errors.Is(err, os.ErrNotExist) {
-			err = os.Mkdir(cacheDir, 0750)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
+		if cfg["VERBOSE"] == "yes" {
+			fmt.Printf("Create a new cache dir: `%s`\n", cfg["CACHE_DIR"])
+		}
+		err = os.Mkdir(cfg["CACHE_DIR"], 0750)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	}
 }
