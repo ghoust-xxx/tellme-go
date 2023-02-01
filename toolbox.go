@@ -112,10 +112,23 @@ func getTestURL(url string) (string, error) {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Printf("Download test page: `%s`\n", url)
 	}
-	last := strings.LastIndex(url, "/")
-	first := strings.LastIndex(url[:last], "/") + 1
-	f, err := os.Open(filepath.Join(
-		testFiles, "forvo_"+cfg["LANG"]+"_"+url[first:last]+".html"))
+
+	var file string
+
+	if strings.Index(url, "https://forvo.com/search/") == 0 {
+		last := strings.LastIndex(url, "/")
+		last = strings.LastIndex(url[:last], "/")
+		first := strings.LastIndex(url[:last], "/") + 1
+		file = filepath.Join(testFiles,
+			"forvo_"+cfg["LANG"]+"_search_"+url[first:last]+".html")
+	} else {
+		last := strings.LastIndex(url, "/")
+		first := strings.LastIndex(url[:last], "/") + 1
+		file = filepath.Join(testFiles,
+			"forvo_"+cfg["LANG"]+"_"+url[first:last]+".html")
+	}
+
+	f, err := os.Open(file)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}

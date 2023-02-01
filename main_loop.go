@@ -461,11 +461,46 @@ func saveWord(item Pron) string {
 	return ""
 }
 
+// pronCheck makes a seach request to be sure pronunciation for this word
+// exists. I does not matter in case just one word, but if we have list of a few
+// hundreds I am afraid we can be block by some anti-bot system
+func pronCheck(cfg Config, word string) bool {
+	if cfg["VERBOSE"] == "yes" {
+		fmt.Printf("Checking pronunciation existing: `%s`\n", word)
+	}
+
+	pageURL := fmt.Sprintf("%s/search/%s/%s/", forvoURL, word, cfg["LANG"])
+	pageText, err := getHTML(pageURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "can not get search page for '%s'!\n", word)
+		return false
+	}
+
+	// extract block with count of founded words
+	countStr := `(?is)<section class="main_section">\s*<header>.*?` +
+		`<p class="more">(.*?)</p>`
+	countRe := regexp.MustCompile(countStr)
+	count := countRe.FindStringSubmatch(pageText)
+	if count == nil || count[1] == "0 words found" {
+		return false
+	}
+
+	return true
+}
+
 // getPronList gets a pronunciation list for a specific word
 func getPronList(cfg Config, word string) (result []Pron) {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Printf("Extracting pronunciation list for `%s`\n", word)
 	}
+
+	if cfg["PRONUNCIATION_CHECK"] == "yes" {
+		if !pronCheck(cfg, word) {
+			fmt.Fprintf(os.Stderr, "no pronunciations for '%s'!\n", word)
+			return
+		}
+	}
+
 	pageURL := fmt.Sprintf("%s/word/%s/#%s", forvoURL, word, cfg["LANG"])
 	pageText, err := getHTML(pageURL)
 	if err != nil {
@@ -480,7 +515,7 @@ func getPronList(cfg Config, word string) (result []Pron) {
 	wordsBlock := wordsBlockRe.FindString(pageText)
 	if wordsBlock == "" {
 		fmt.Fprintln(os.Stderr, "can not extract words block")
-		os.Exit(1)
+		return
 	}
 
 	// extract every pronunciation <li> chunks
@@ -489,7 +524,7 @@ func getPronList(cfg Config, word string) (result []Pron) {
 	pronBlocks := pronRe.FindAllString(wordsBlock, -1)
 	if pronBlocks == nil {
 		fmt.Fprintln(os.Stderr, "can not extract separate pronunciations blocks")
-		os.Exit(1)
+		return
 	}
 	for _, chunk := range pronBlocks {
 		result = append(result, extractItem(cfg, word, chunk))
