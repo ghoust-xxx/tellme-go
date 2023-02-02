@@ -80,7 +80,7 @@ func getChar() string {
 
 // getURL gets a web page, handles possible errors and returns the web page
 // content as a string
-func getURL(url string) (string, error) {
+func getURL(cfg Config, url string) (string, error) {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Printf("Download page: `%s`\n", url)
 	}
@@ -108,7 +108,7 @@ func getURL(url string) (string, error) {
 }
 
 // getTestURL can be used in tests and gets web pages from file system
-func getTestURL(url string) (string, error) {
+func getTestURL(cfg Config, url string) (string, error) {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Printf("Download test page: `%s`\n", url)
 	}
@@ -142,7 +142,7 @@ func getTestURL(url string) (string, error) {
 // downloadFile gets and saves audiofile from web. In case of enabled cache it
 // first checks cache directory. If file is missing function downloads it
 // to the cache directory and then copy it to the current location.
-func downloadFile(url, dst string) error {
+func downloadFile(cfg Config, url, dst string) error {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Printf("Download file: `%s`\n", url)
 	}
@@ -185,7 +185,7 @@ func downloadFile(url, dst string) error {
 }
 
 // downloadTestFile can be used in tests and download audio file from file system
-func downloadTestFile(url, dst string) error {
+func downloadTestFile(cfg Config, url, dst string) error {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Printf("Download test file: `%s`\n", url)
 	}
@@ -201,13 +201,13 @@ func downloadTestFile(url, dst string) error {
 	src := filepath.Join(testFiles,
 		"forvo_"+cfg["LANG"]+"_"+dst[first+1:last]+"."+cfg["ATYPE"])
 
-	copyFile(src, dst)
+	copyFile(cfg, src, dst)
 
 	return nil
 }
 
 // copyFile just a helper function to copy file in a more comfortable way
-func copyFile(src, dst string) {
+func copyFile(cfg Config, src, dst string) {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Printf("Copy file: `%s`\n", src)
 	}

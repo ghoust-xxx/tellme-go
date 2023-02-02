@@ -18,35 +18,34 @@ type configFileValue struct {
 	fname   string
 	ftype   string
 }
+type Config map[string]string
+
 
 const confDirName = "tellme"
 const confFileName = "config"
 const cacheDirName = "cache"
 const configFileComment = "TellMe configuration file"
 
-var configDefaults []configFileValue
-var confFile string
 var fs *flag.FlagSet
+var config Config
 
 // configInit makes sure config file and cache dir exist and read config values.
-func configInit() {
-	checkConfig()
-	setConfigValues()
-	checkCache()
-}
+func configInit() Config {
+	configDefaults := getDefaultConfigValues()
+	config = setDefaultConfigValues(configDefaults)
 
-// setConfigValues set all config value that app will be use.
-// It set them it this priority: default values, values from config file and
-// at last values from command line paramas.
-func setConfigValues() {
-	setDefaultConfigValues()
-	updateFromConfigFile()
-	updateFromCmdLine()
-	optionsValidation()
+	confFile := getConfigFile(config, configDefaults)
+
+	config = updateFromConfigFile(config, confFile)
+	updateFromCmdLine(configDefaults)
+	optionsValidation(config)
+
+	checkCache(config)
+	return config
 }
 
 // optionsValidation check if current flag combination is allowed
-func optionsValidation() {
+func optionsValidation(cfg Config) {
 	if len(os.Args) > 0 && cfg["FILE"] != "" {
 		fmt.Fprintln(os.Stderr,
 			"you can use only --file options or words in command line, not both")
@@ -56,7 +55,7 @@ func optionsValidation() {
 
 // updateFromCmdLine get command line params and update app config values
 // accordingly.
-func updateFromCmdLine() {
+func updateFromCmdLine(configDefaults []configFileValue) {
 	fs = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
 	for _, val := range configDefaults {
@@ -76,7 +75,7 @@ func updateFromCmdLine() {
 	pFile := fs.String("f", "", "read input from `filename`")
 	fs.Usage = usage
 	fs.Parse(os.Args[1:])
-	cfg["FILE"] = *pFile
+	config["FILE"] = *pFile
 	os.Args = fs.Args()
 }
 
@@ -94,7 +93,7 @@ func usage() {
 func buildYesNo(val configFileValue) func(s string) error {
 	return func(s string) error {
 		if s == "yes" || s == "no" {
-			cfg[val.key] = s
+			config[val.key] = s
 			return nil
 		}
 		return errors.New("have to be yes or no")
@@ -104,7 +103,7 @@ func buildYesNo(val configFileValue) func(s string) error {
 // buildPath parses path args type
 func buildPath(val configFileValue) func(s string) error {
 	return func(s string) error {
-		cfg[val.key] = s
+		config[val.key] = s
 		return nil
 	}
 }
@@ -115,7 +114,7 @@ func buildLang(val configFileValue) func(s string) error {
 		if len(s) != 2 {
 			return errors.New("have to be 2 letters language code")
 		}
-		cfg[val.key] = s
+		config[val.key] = s
 		return nil
 	}
 }
@@ -124,7 +123,7 @@ func buildLang(val configFileValue) func(s string) error {
 func buildAFormat(val configFileValue) func(s string) error {
 	return func(s string) error {
 		if s == "mp3" || s == "ogg" {
-			cfg[val.key] = s
+			config[val.key] = s
 			return nil
 		}
 		return errors.New("have to be mp3 or ogg")
@@ -133,7 +132,7 @@ func buildAFormat(val configFileValue) func(s string) error {
 
 // updateFromConfigFile read config file and updates app config values
 // accordingly.
-func updateFromConfigFile() {
+func updateFromConfigFile(cfg Config, confFile string) Config {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Println("Read config file: `%s`\n", confFile)
 	}
@@ -179,23 +178,24 @@ func updateFromConfigFile() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+
+	return cfg
 }
 
 // setDefaultConfigValues set config value in case if some missing both in the
 // config file and in command line params.
-func setDefaultConfigValues() {
-	cfg = make(Config)
+func setDefaultConfigValues(configDefaults []configFileValue) Config {
+	cfg := make(Config)
 	for _, val := range configDefaults {
 		cfg[val.key] = val.value
 	}
+	return cfg
 }
 
-// checkConfig checks if $HOME/.tellme/ || $XDG_CONFIG_HOME/tellme/,
+// getConfigFile checks if $HOME/.tellme/ || $XDG_CONFIG_HOME/tellme/,
 // $HOME/.tellme/config || $XDG_CONFIG_HOME/tellme/config exist.
 // If they are not tries to create them in $XDG paths.
-func checkConfig() {
-	setDefaultConfigFileValues()
-
+func getConfigFile(cfg Config, configDefaults []configFileValue) string {
 	// Check if configuration directory already exists.
 	// Create it if it does not.
 	userHomeDir, err := os.UserHomeDir()
@@ -226,22 +226,23 @@ func checkConfig() {
 
 	// Check if configuration file already exists.
 	// Create it if it does not.
-	confFile = filepath.Join(confDir, confFileName)
+	confFile := filepath.Join(confDir, confFileName)
 	_, err = os.Stat(confFile)
 	if errors.Is(err, os.ErrNotExist) {
-		createNewConf()
+		createNewConf(cfg, confFile, configDefaults)
 	}
+	return confFile
 }
 
-// setDefaultConfigFileValues define default value for creating a new config file
-func setDefaultConfigFileValues() {
+// getDefaultConfigValues define default config values
+func getDefaultConfigValues() []configFileValue {
 	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	configDefaults = []configFileValue{
+	configDefaults := []configFileValue{
 		{
 			comment: "interactive mode `[yes | no]`. Default no",
 			key:     "INTERACTIVE",
@@ -273,9 +274,9 @@ func setDefaultConfigFileValues() {
 			fname:   "cache-dir",
 			ftype:   "path",
 		}, {
-			comment: "language `[en | es | de | etc]`. Default nl",
+			comment: "language `[en | es | de | etc]`. Default en",
 			key:     "LANG",
-			value:   "nl",
+			value:   "en",
 			fname:   "l",
 			ftype:   "lang",
 		}, {
@@ -292,10 +293,11 @@ func setDefaultConfigFileValues() {
 			ftype:   "yesno",
 		},
 	}
+	return configDefaults
 }
 
 // createNewConf write a new config file with all default values and comments
-func createNewConf() {
+func createNewConf(cfg Config, confFile string, configDefaults []configFileValue) {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Println("Create a new config file: `%s`\n", confFile)
 	}
@@ -333,7 +335,7 @@ func createNewConf() {
 }
 
 // checkCache checks if cfg["CACHE_DIR"] exists If it is not tries to create it
-func checkCache() {
+func checkCache(cfg Config) {
 	_, err := os.Stat(cfg["CACHE_DIR"])
 	if errors.Is(err, os.ErrNotExist) {
 		if cfg["VERBOSE"] == "yes" {

@@ -22,15 +22,15 @@ type Pron struct {
 	cacheFile string
 }
 
-var getHTML func(url string) (string, error)
-var getAudio func(url, dst string) error
+var getHTML func(cfg Config, url string) (string, error)
+var getAudio func(cfg Config, url, dst string) error
 var getWord func(i int) (string, error)
 var tmpDir string
 
 // mainLoop is process all input word by word
 func mainLoop(cfg Config, args []string) {
-	getHTML = getTestURL
-	getAudio = downloadTestFile
+	getHTML = getURL
+	getAudio = downloadFile
 
 	tmpDir, err := ioutil.TempDir("", "tellme")
 	if err != nil {
@@ -68,7 +68,7 @@ func loopNonInArgs(cfg Config, args []string) {
 		}
 		list := getPronList(cfg, word)
 		if len(list) > 0 {
-			saveWord(list[0])
+			saveWord(cfg, list[0])
 		}
 	}
 }
@@ -91,7 +91,7 @@ func loopNonInFile(cfg Config) {
 		}
 		list := getPronList(cfg, word)
 		if len(list) > 0 {
-			saveWord(list[0])
+			saveWord(cfg, list[0])
 		}
 	}
 
@@ -112,7 +112,7 @@ func loopNonInStdin(cfg Config) {
 		}
 		list := getPronList(cfg, word)
 		if len(list) > 0 {
-			saveWord(list[0])
+			saveWord(cfg, list[0])
 		}
 	}
 
@@ -143,7 +143,7 @@ func loopInArgs(cfg Config, args []string) {
 		if len(list) == 0 {
 			key = printNoPron(words[wordIdx], wordIdx == 0, wordIdx == len(words)-1)
 		} else {
-			key = printMenu(list, pronIdx, wordIdx == 0, wordIdx == len(words)-1)
+			key = printMenu(cfg, list, pronIdx, wordIdx == 0, wordIdx == len(words)-1)
 		}
 		switch key {
 		case "q":
@@ -211,7 +211,7 @@ func loopInFile(cfg Config) {
 		if len(list) == 0 {
 			key = printNoPron(words[wordIdx], wordIdx == 0, wordIdx == len(words)-1 && eof)
 		} else {
-			key = printMenu(list, pronIdx, wordIdx == 0, wordIdx == len(words)-1 && eof)
+			key = printMenu(cfg, list, pronIdx, wordIdx == 0, wordIdx == len(words)-1 && eof)
 		}
 		switch key {
 		case "q":
@@ -254,7 +254,7 @@ func loopInStdin(cfg Config) {
 		if len(list) == 0 {
 			key = printNoPron(words[wordIdx], wordIdx == 0, wordIdx == len(words)-1)
 		} else {
-			key = printMenu(list, pronIdx, wordIdx == 0, wordIdx == len(words)-1)
+			key = printMenu(cfg, list, pronIdx, wordIdx == 0, wordIdx == len(words)-1)
 		}
 		switch key {
 		case "q":
@@ -333,7 +333,7 @@ func printNoPron(word string, isFirstWord, isLastWord bool) string {
 
 // printMenu outputs list of pronunciations and handles user input. Return
 // one of allowed keys
-func printMenu(list []Pron, pronIdx int, isFirstWord, isLastWord bool) string {
+func printMenu(cfg Config, list []Pron, pronIdx int, isFirstWord, isLastWord bool) string {
 	// format list of pronunciations
 	word := list[0].word
 	pronLines := word + "\n"
@@ -384,7 +384,7 @@ UPDATE_PRINT:
 
 	// play pronunciation audio file
 	if !alreadySaid {
-		aPath := saveWord(list[pronIdx])
+		aPath := saveWord(cfg, list[pronIdx])
 		sayWord(aPath)
 		alreadySaid = true
 	}
@@ -417,7 +417,7 @@ UPDATE_PRINT:
 
 // saveWord saves mp3/ogg file in cache and in current directory. If cache
 // enabled and file already in it returns the word from the cache
-func saveWord(item Pron) string {
+func saveWord(cfg Config, item Pron) string {
 	if cfg["VERBOSE"] == "yes" {
 		fmt.Printf("Saving audio file: `%s`\n", item.aFile)
 	}
@@ -425,14 +425,14 @@ func saveWord(item Pron) string {
 	if cfg["CACHE"] == "yes" {
 		_, err := os.Stat(item.cacheFile)
 		if errors.Is(err, os.ErrNotExist) {
-			err = getAudio(item.aURL, item.cacheFile)
+			err = getAudio(cfg, item.aURL, item.cacheFile)
 			if err != nil {
 				return ""
 			}
 		}
 
 		if cfg["DOWNLOAD"] == "yes" {
-			copyFile(item.cacheFile, item.aFile)
+			copyFile(cfg, item.cacheFile, item.aFile)
 			return item.aFile
 		}
 		return item.cacheFile
@@ -440,7 +440,7 @@ func saveWord(item Pron) string {
 
 	// we do not use cache
 	if cfg["DOWNLOAD"] == "yes" {
-		err := getAudio(item.aURL, item.aFile)
+		err := getAudio(cfg, item.aURL, item.aFile)
 		if err != nil {
 			return ""
 		}
@@ -451,7 +451,7 @@ func saveWord(item Pron) string {
 	// Otherwise we just do not need download anything
 	if cfg["INTERACTIVE"] == "yes" {
 		file := filepath.Join(tmpDir + filepath.Base(item.cacheFile))
-		err := getAudio(item.aURL, file)
+		err := getAudio(cfg, item.aURL, file)
 		if err != nil {
 			return ""
 		}
@@ -470,7 +470,7 @@ func pronCheck(cfg Config, word string) bool {
 	}
 
 	pageURL := fmt.Sprintf("%s/search/%s/%s/", forvoURL, word, cfg["LANG"])
-	pageText, err := getHTML(pageURL)
+	pageText, err := getHTML(cfg, pageURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "can not get search page for '%s'!\n", word)
 		return false
@@ -502,7 +502,7 @@ func getPronList(cfg Config, word string) (result []Pron) {
 	}
 
 	pageURL := fmt.Sprintf("%s/word/%s/#%s", forvoURL, word, cfg["LANG"])
-	pageText, err := getHTML(pageURL)
+	pageText, err := getHTML(cfg, pageURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "can not get pronunciation page for '%s'!\n", word)
 		return
