@@ -20,7 +20,6 @@ type configFileValue struct {
 }
 type Config map[string]string
 
-
 const confDirName = "tellme"
 const confFileName = "config"
 const cacheDirName = "cache"
@@ -134,7 +133,7 @@ func buildAFormat(val configFileValue) func(s string) error {
 // accordingly.
 func updateFromConfigFile(cfg Config, confFile string) Config {
 	if cfg["VERBOSE"] == "yes" {
-		fmt.Println("Read config file: `%s`\n", confFile)
+		fmt.Printf("Read config file: `%s`\n", confFile)
 	}
 	cFile, err := os.Open(confFile)
 	if err != nil {
@@ -299,7 +298,7 @@ func getDefaultConfigValues() []configFileValue {
 // createNewConf write a new config file with all default values and comments
 func createNewConf(cfg Config, confFile string, configDefaults []configFileValue) {
 	if cfg["VERBOSE"] == "yes" {
-		fmt.Println("Create a new config file: `%s`\n", confFile)
+		fmt.Printf("Create a new config file: `%s`\n", confFile)
 	}
 	f, err := os.OpenFile(confFile, os.O_RDWR|os.O_CREATE, 0640)
 	if err != nil {
