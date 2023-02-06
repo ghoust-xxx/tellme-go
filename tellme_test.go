@@ -203,3 +203,170 @@ func TestUpdateFromConfigFile(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateFromCmdLine(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{
+			name: "Audio type",
+			key:  "ATYPE",
+			val:  "ogg",
+		}, {
+			name: "Language",
+			key:  "LANG",
+			val:  "nl",
+		}, {
+			name: "Path",
+			key:  "PATHOPT",
+			val:  "/random/path",
+		}, {
+			name: "Yes/no option",
+			key:  "YESNOOPT",
+			val:  "yes",
+		},
+	}
+	cfgDefaults := getDefaults()
+	config = setDefaultConfigValues(cfgDefaults)
+
+	tmp := make([]string, len(os.Args))
+	copy(tmp, os.Args)
+	os.Args = []string{"test", "-y", "yes", "-p", "/random/path",
+		"-l", "nl", "-t", "ogg"}
+	updateFromCmdLine(cfgDefaults)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.val != config[tt.key] {
+				t.Errorf("cfg[%s] == %s; expected %s", tt.key, config[tt.key], tt.val)
+			}
+		})
+	}
+
+	os.Args = make([]string, len(tmp))
+	copy(os.Args, tmp)
+}
+
+func TestPronCheck(t *testing.T) {
+	cfg := make(Config)
+	cfg["VERBOSE"] = "no"
+	cfg["LANG"] = "en"
+	getHTML = getTestURL
+
+	t.Run("Pronunciation found", func(t *testing.T) {
+		if pronCheck(cfg, "test") == false {
+			t.Errorf("Pronunciation for word `test` is not found")
+		}
+	})
+	t.Run("Pronunciation does not found", func(t *testing.T) {
+		if pronCheck(cfg, "tafel") == true {
+			t.Errorf("Pronunciation for word `tafel` should not be found")
+		}
+	})
+}
+
+func TestGetPronList(t *testing.T) {
+	tests := []struct {
+		name string
+		pron []Pron
+	}{
+		{
+			name: "Word test",
+			pron: []Pron{
+				Pron{
+					word:       "test",
+					author:     "Author1",
+					sex:        "male",
+					country:    "United Kingdom",
+					mp3:        audioURL + "/mp3/1.mp3",
+					ogg:        audioURL + "/ogg/1.ogg",
+					aFile:      "test.mp3",
+					aURL:       audioURL + "/mp3/1.mp3",
+					fullAuthor: "Author1 (male from United Kingdom)",
+					cacheDir:   "mp3/en/09",
+					cacheFile:  "mp3/en/09/test_Author1.mp3",
+				},
+				Pron{
+					word:       "test",
+					author:     "Author2",
+					sex:        "male",
+					country:    "United Kingdom",
+					mp3:        "https://audio00.forvo.com/audios/mp3/2.mp3",
+					ogg:        "https://audio00.forvo.com/audios/ogg/2.ogg",
+					aFile:      "test.mp3",
+					aURL:       "https://audio00.forvo.com/audios/mp3/2.mp3",
+					fullAuthor: "Author2 (male from United Kingdom)",
+					cacheDir:   "mp3/en/09",
+					cacheFile:  "mp3/en/09/test_Author2.mp3",
+				},
+				Pron{
+					word:       "test",
+					author:     "Author3",
+					sex:        "male",
+					country:    "USA",
+					mp3:        "https://audio00.forvo.com/audios/mp3/3.mp3",
+					ogg:        "https://audio00.forvo.com/audios/ogg/3.ogg",
+					aFile:      "test.mp3",
+					aURL:       "https://audio00.forvo.com/audios/mp3/3.mp3",
+					fullAuthor: "Author3 (male from USA)",
+					cacheDir:   "mp3/en/09",
+					cacheFile:  "mp3/en/09/test_Author3.mp3",
+				},
+			},
+		},
+	}
+
+	cfg := make(Config)
+	cfg["VERBOSE"] = "no"
+	cfg["LANG"] = "en"
+	cfg["ATYPE"] = "mp3"
+	cfg["PRONUNCIATION_CHECK"] = "no"
+	getHTML = getTestURL
+
+	list := getPronList(cfg, "test")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i, pron := range tt.pron {
+				pronCompare(t, i, pron, list[i])
+			}
+		})
+	}
+}
+
+func pronCompare(t *testing.T, i int, want, got Pron) {
+	if want.word != got.word {
+		t.Errorf("list[%d].word == '%s'; expected '%s'", i, got.word, want.word)
+	}
+	if want.author != got.author {
+		t.Errorf("list[%d].author == '%s'; expected '%s'", i, got.author, want.author)
+	}
+	if want.sex != got.sex {
+		t.Errorf("list[%d].sex == '%s'; expected '%s'", i, got.sex, want.sex)
+	}
+	if want.country != got.country {
+		t.Errorf("list[%d].country == '%s'; expected '%s'", i, got.country, want.country)
+	}
+	if want.mp3 != got.mp3 {
+		t.Errorf("list[%d].mp3 == '%s'; expected '%s'", i, got.mp3, want.mp3)
+	}
+	if want.ogg != got.ogg {
+		t.Errorf("list[%d].ogg == '%s'; expected '%s'", i, got.ogg, want.ogg)
+	}
+	if want.aFile != got.aFile {
+		t.Errorf("list[%d].aFile == '%s'; expected '%s'", i, got.aFile, want.aFile)
+	}
+	if want.aURL != got.aURL {
+		t.Errorf("list[%d].aURL == '%s'; expected '%s'", i, got.aURL, want.aURL)
+	}
+	if want.fullAuthor != got.fullAuthor {
+		t.Errorf("list[%d].fullAuthor == '%s'; expected '%s'", i, got.fullAuthor, want.fullAuthor)
+	}
+	if want.cacheDir != got.cacheDir {
+		t.Errorf("list[%d].cacheDir == '%s'; expected '%s'", i, got.cacheDir, want.cacheDir)
+	}
+	if want.cacheFile != got.cacheFile {
+		t.Errorf("list[%d].cacheFile == '%s'; expected '%s'", i, got.cacheFile, want.cacheFile)
+	}
+}
