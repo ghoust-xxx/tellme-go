@@ -158,7 +158,7 @@ func updateFromConfigFile(cfg Config, confFile string) Config {
 		matches := iniLine.FindStringSubmatch(string(line))
 		if matches == nil {
 			fmt.Fprintf(os.Stderr,
-				"error in config file %v, line %v", confFile, cnt)
+				"error in config file %v, line %v\n", confFile, cnt)
 			os.Exit(1)
 		}
 
@@ -166,7 +166,7 @@ func updateFromConfigFile(cfg Config, confFile string) Config {
 		value := matches[2]
 		if _, ok := cfg[key]; !ok {
 			fmt.Fprintf(os.Stderr,
-				"nonexisting key in config file %v, line %v", confFile, cnt)
+				"nonexisting key in config file %v, line %v\n", confFile, cnt)
 			os.Exit(1)
 		}
 
