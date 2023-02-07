@@ -196,10 +196,8 @@ func downloadTestFile(cfg Config, url, dst string) error {
 		os.Exit(1)
 	}
 
-	first := strings.LastIndex(dst, "/")
-	last := first + strings.Index(dst[first:], "_")
-	src := filepath.Join(testFiles,
-		"forvo_"+cfg["LANG"]+"_"+dst[first+1:last]+"."+cfg["ATYPE"])
+	first := strings.LastIndex(url, "/")
+	src := filepath.Join(testFiles, "forvo_"+cfg["LANG"]+"_"+url[first+1:])
 
 	copyFile(cfg, src, dst)
 

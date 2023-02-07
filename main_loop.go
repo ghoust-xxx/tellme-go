@@ -555,10 +555,12 @@ func extractItem(cfg Config, word, chunk string) Pron {
 		os.Exit(1)
 	}
 	mp3String := string(decodedMp3)
-	mp3String = mp3String[:len(mp3String)-1]
-	item.mp3 = audioURL + "/mp3/" + mp3String
-	item.ogg = audioURL + "/ogg/" + mp3String
-	item.ogg = item.ogg[:len(item.ogg)-3] + "ogg"
+	newLine := strings.LastIndex(mp3String, ".")
+	if newLine > -1 {
+		mp3String = mp3String[:newLine]
+	}
+	item.mp3 = audioURL + "/mp3/" + mp3String + ".mp3"
+	item.ogg = audioURL + "/ogg/" + mp3String + ".ogg"
 
 	switch cfg["ATYPE"] {
 	case "mp3":

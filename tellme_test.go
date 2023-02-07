@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -279,10 +281,10 @@ func TestGetPronList(t *testing.T) {
 					author:     "Author1",
 					sex:        "male",
 					country:    "United Kingdom",
-					mp3:        audioURL + "/mp3/1.mp3",
-					ogg:        audioURL + "/ogg/1.ogg",
+					mp3:        audioURL + "/mp3/test.mp3",
+					ogg:        audioURL + "/ogg/test.ogg",
 					aFile:      "test.mp3",
-					aURL:       audioURL + "/mp3/1.mp3",
+					aURL:       audioURL + "/mp3/test.mp3",
 					fullAuthor: "Author1 (male from United Kingdom)",
 					cacheDir:   "mp3/en/09",
 					cacheFile:  "mp3/en/09/test_Author1.mp3",
@@ -292,10 +294,10 @@ func TestGetPronList(t *testing.T) {
 					author:     "Author2",
 					sex:        "male",
 					country:    "United Kingdom",
-					mp3:        "https://audio00.forvo.com/audios/mp3/2.mp3",
-					ogg:        "https://audio00.forvo.com/audios/ogg/2.ogg",
+					mp3:        "https://audio00.forvo.com/audios/mp3/test.mp3",
+					ogg:        "https://audio00.forvo.com/audios/ogg/test.ogg",
 					aFile:      "test.mp3",
-					aURL:       "https://audio00.forvo.com/audios/mp3/2.mp3",
+					aURL:       "https://audio00.forvo.com/audios/mp3/test.mp3",
 					fullAuthor: "Author2 (male from United Kingdom)",
 					cacheDir:   "mp3/en/09",
 					cacheFile:  "mp3/en/09/test_Author2.mp3",
@@ -305,10 +307,10 @@ func TestGetPronList(t *testing.T) {
 					author:     "Author3",
 					sex:        "male",
 					country:    "USA",
-					mp3:        "https://audio00.forvo.com/audios/mp3/3.mp3",
-					ogg:        "https://audio00.forvo.com/audios/ogg/3.ogg",
+					mp3:        "https://audio00.forvo.com/audios/mp3/test.mp3",
+					ogg:        "https://audio00.forvo.com/audios/ogg/test.ogg",
 					aFile:      "test.mp3",
-					aURL:       "https://audio00.forvo.com/audios/mp3/3.mp3",
+					aURL:       "https://audio00.forvo.com/audios/mp3/test.mp3",
 					fullAuthor: "Author3 (male from USA)",
 					cacheDir:   "mp3/en/09",
 					cacheFile:  "mp3/en/09/test_Author3.mp3",
@@ -368,5 +370,52 @@ func pronCompare(t *testing.T, i int, want, got Pron) {
 	}
 	if want.cacheFile != got.cacheFile {
 		t.Errorf("list[%d].cacheFile == '%s'; expected '%s'", i, got.cacheFile, want.cacheFile)
+	}
+}
+
+func TestSaveWord(t *testing.T) {
+	cfg := make(Config)
+	cfg["VERBOSE"] = "no"
+	cfg["CACHE"] = "no"
+	cfg["DOWNLOAD"] = "yes"
+	cfg["INTERACTIVE"] = "no"
+	cfg["LANG"] = "en"
+	cfg["ATYPE"] = "mp3"
+	cfg["PRONUNCIATION_CHECK"] = "no"
+	getHTML = getTestURL
+	getAudio = downloadTestFile
+	tmpDir := t.TempDir()
+
+	wantFile, err := os.Open("local_files/forvo_en_test.mp3")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	defer wantFile.Close()
+	text, err := io.ReadAll(wantFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	wantMD5 := md5.Sum(text)
+
+	list := getPronList(cfg, "test")
+	list[0].aFile = filepath.Join(tmpDir, "test.mp3")
+	saveWord(cfg, list[0])
+
+	gotFile, err := os.Open(list[0].aFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	defer gotFile.Close()
+	text, err = io.ReadAll(gotFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	gotMD5 := md5.Sum(text)
+
+	for i := 0; i < len(wantMD5); i++ {
+		if wantMD5[i] != gotMD5[i] {
+			t.Errorf("md5sum local_files/forvo_en_test.mp3 and %s are not equal", list[0].aFile)
+			return
+		}
 	}
 }
