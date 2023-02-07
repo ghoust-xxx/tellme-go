@@ -72,10 +72,19 @@ func updateFromCmdLine(configDefaults []configFileValue) {
 		}
 	}
 	pFile := fs.String("f", "", "read input from `filename`")
+	pVersion := fs.Bool("version", false, "print program version")
 	fs.Usage = usage
 	fs.Parse(os.Args[1:])
 	config["FILE"] = *pFile
+	if *pVersion {
+		versionInfo()
+	}
 	os.Args = fs.Args()
+}
+
+func versionInfo() {
+	fmt.Fprintf(fs.Output(), "%s 0.0.1\n", filepath.Base(os.Args[0]))
+	os.Exit(0)
 }
 
 // usage expand standart usage function from flag package
