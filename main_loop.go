@@ -538,9 +538,9 @@ func extractItem(cfg Config, word, chunk string) Pron {
 	var item Pron
 	item.word = word
 
-	chunkStr := `(?is)onclick="Play\(\d+,.*?,.*?,'(.*?)'.*?>\s*` +
-		`Pronunciation by\s+(.*?)\s+` +
-		`</span>\s*<span class="from">\((.*?)\ from\ (.*?)\)</span>`
+	chunkStr := `(?is)onclick="Play\(\d+,.*?,.*?,.*?,'(.*?)'.*?>\s*` +
+		`Pronunciation by\s*(.*?)\s*` +
+		`</span>\s*<span class="from">\((.*?)(?:\ from\ (.*?))?\)</span>`
 	chunkRe := regexp.MustCompile(chunkStr)
 	items := chunkRe.FindStringSubmatch(chunk)
 	if items == nil {
@@ -578,6 +578,9 @@ func extractItem(cfg Config, word, chunk string) Pron {
 
 	item.sex = strings.ToLower(items[3])
 	item.country = items[4]
+	if len(item.country) == 0 {
+		item.country = "Unknown"
+	}
 
 	item.fullAuthor = fmt.Sprintf("%s (%s from %s)",
 		item.author, item.sex, item.country)
